@@ -950,7 +950,7 @@ const getUserDetailedListUsingCache = async function (usersMap, tenantCode, dele
 				usersInfo.missingUserIds,
 				options,
 				tenantCode,
-				(unscopped = true)
+				true
 			)
 			userDetails.push(...usersFromDb)
 		}

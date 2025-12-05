@@ -4,7 +4,7 @@ const userRequests = require('@requests/user')
 const entityTypeService = require('@services/entity-type')
 const { Parser } = require('@json2csv/plainjs')
 
-exports.getEnrolledMentees = async (sessionId, queryParams, userID, tenantCode) => {
+exports.getEnrolledMentees = async (sessionId, queryParams, tenantCode) => {
 	try {
 		const mentees = await sessionAttendeesQueries.findAll({ session_id: sessionId }, tenantCode)
 
