@@ -1,14 +1,5 @@
 const SessionAttendee = require('@database/models/index').SessionAttendee
-const Session = require('@database/models/index').Session
 const { Op, col } = require('sequelize')
-const UserExtension = require('@database/models/index').UserExtension
-
-// Define association if not already defined
-SessionAttendee.belongsTo(UserExtension, {
-	foreignKey: 'mentee_id',
-	targetKey: 'user_id',
-	as: 'userExtension',
-})
 
 exports.create = async (data, tenantCode) => {
 	try {
@@ -296,40 +287,6 @@ exports.getCount = async (filter = {}, options = {}) => {
 			where: filter,
 			...options,
 		})
-	} catch (error) {
-		return error
-	}
-}
-
-exports.findMentees = async (filter, tenantCode, options = {}) => {
-	try {
-		if (!tenantCode) {
-			throw new Error('tenantCode is required')
-		}
-
-		filter.tenant_code = tenantCode
-
-		const { where: optionsWhere, ...otherOptions } = options
-
-		const results = await SessionAttendee.findAll({
-			where: {
-				...optionsWhere,
-				...filter,
-			},
-			attributes: ['*', [col('userExtension.organization_code'), 'organization_code']],
-			include: [
-				{
-					model: UserExtension,
-					as: 'userExtension',
-					attributes: [],
-					required: false,
-				},
-			],
-			...otherOptions,
-			raw: true,
-		})
-
-		return results
 	} catch (error) {
 		return error
 	}

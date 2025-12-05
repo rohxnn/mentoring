@@ -314,9 +314,7 @@ module.exports = class SessionsHelper {
 			bodyData['mentor_organization_id'] = orgId
 			// SAAS changes; Include visibility and visible organisation
 			// Call user service to fetch organisation details --SAAS related changes
-			console.log(`Fetching organization details for orgCode: ${orgCode}, tenantCode: ${tenantCode}`)
 			let userOrgDetails = await userRequests.fetchOrgDetails({ organizationCode: orgCode, tenantCode })
-			console.log('Organization service response:', JSON.stringify(userOrgDetails, null, 2))
 
 			// Handle UNAUTHORIZED response from User Service - skip validation if permissions issue
 			if (
@@ -380,10 +378,11 @@ module.exports = class SessionsHelper {
 					data.id,
 					menteeIdsToEnroll,
 					bodyData.time_zone,
-					loggedInUserId,
 					orgId,
 					orgCode,
-					tenantCode
+					tenantCode,
+					bodyData.mentor_id,
+					data
 				)
 			}
 
@@ -467,8 +466,11 @@ module.exports = class SessionsHelper {
 
 			const processDbResponse = utils.processDbResponse(data.toJSON(), validationData)
 
-			processDbResponse['resources'] = await this.getResources(data.id, tenantCode)
-			processDbResponse['resources'] = await this.getResourceAccessibleUrl(processDbResponse['resources'])
+			processDbResponse['resources'] = []
+			if (bodyData?.resources && bodyData.resources.length > 0) {
+				processDbResponse['resources'] = bodyData?.resources
+				processDbResponse['resources'] = await this.getResourceAccessibleUrl(processDbResponse['resources'])
+			}
 
 			// Set notification schedulers for the session
 			// Deep clone to avoid unintended modifications to the original object.
@@ -512,15 +514,10 @@ module.exports = class SessionsHelper {
 						: common.sessionCompleteEndpoint + data.id,
 					reqBody.email_template_code ? common.POST_METHOD : common.PATCH_METHOD
 				)
-				console.log('📧 EMAIL DEBUG: Scheduler job created successfully for:', jobsToCreate[jobIndex].jobId)
 			}
 
 			let emailTemplateCode
-			console.log('📧 EMAIL DEBUG: Checking manager flow email conditions:', {
-				managerFlow: bodyData.managerFlow,
-				userEmail: userDetails.email,
-				notifyUser: notifyUser,
-			})
+
 			if (bodyData.managerFlow && userDetails.email && notifyUser) {
 				if (data.type == common.SESSION_TYPE.PRIVATE) {
 					//assign template data
@@ -529,14 +526,12 @@ module.exports = class SessionsHelper {
 					// public session email template
 					emailTemplateCode = process.env.MENTOR_PUBLIC_SESSION_INVITE_BY_MANAGER_EMAIL_TEMPLATE
 				}
-				console.log('📧 EMAIL DEBUG: Selected email template code:', emailTemplateCode)
 				// send mail to mentors on session creation if session created by manager
 				const templateData = await notificationQueries.findOneEmailTemplate(
 					emailTemplateCode,
 					{ [Op.in]: [orgCode, defaults.orgCode] },
 					{ [Op.in]: [tenantCode, defaults.tenantCode] }
 				)
-				console.log('📧 EMAIL DEBUG: Template data retrieved:', templateData ? 'Success' : 'Failed')
 
 				// If template data is available. create mail data and push to kafka
 				if (templateData) {
@@ -562,9 +557,7 @@ module.exports = class SessionsHelper {
 						},
 					}
 					console.log('📧 EMAIL DEBUG: EMAIL PAYLOAD: ', JSON.stringify(payload, null, 2))
-					console.log('📧 EMAIL DEBUG: Pushing email to Kafka...')
 					const kafkaResult = await kafkaCommunication.pushEmailToKafka(payload)
-					console.log('📧 EMAIL DEBUG: Kafka push result:', kafkaResult)
 				}
 			}
 
@@ -632,11 +625,8 @@ module.exports = class SessionsHelper {
 			// 	triggerSessionMeetinkAddEmail = true
 			// }
 
-			// Handle both cached objects and Sequelize model instances
-			const sessionData = sessionDetail
-
-			if (sessionData.status == common.COMPLETED_STATUS && bodyData?.resources) {
-				const completedDate = moment(sessionData.completed_at)
+			if (sessionDetail.status == common.COMPLETED_STATUS && bodyData?.resources) {
+				const completedDate = moment(sessionDetail.completed_at)
 				const currentDate = moment.utc()
 				let diffInMinutes = currentDate.diff(completedDate, 'minutes')
 				if (diffInMinutes > process.env.POST_RESOURCE_DELETE_TIMEOUT) {
@@ -649,7 +639,7 @@ module.exports = class SessionsHelper {
 			}
 
 			if (bodyData.type) {
-				if (sessionData.type != bodyData.type) {
+				if (sessionDetail.type != bodyData.type) {
 					return responses.failureResponse({
 						message: 'CANNOT_EDIT_MENTOR_AND_TYPE',
 						statusCode: httpStatusCode.bad_request,
@@ -668,7 +658,7 @@ module.exports = class SessionsHelper {
 				})
 			}
 
-			if (sessionData.created_by !== userId) {
+			if (sessionDetail.created_by !== userId) {
 				return responses.failureResponse({
 					message: 'CANNOT_EDIT_DELETE_LIVE_SESSION',
 					statusCode: httpStatusCode.bad_request,
@@ -678,7 +668,7 @@ module.exports = class SessionsHelper {
 			// If type is passed store it in upper case
 			bodyData.type && (bodyData.type = bodyData.type.toUpperCase())
 			// session can be edited by only the creator
-			if (sessionData.created_by != userId) {
+			if (sessionDetail.created_by != userId) {
 				return responses.failureResponse({
 					message: 'INVALID_PERMISSION',
 					statusCode: httpStatusCode.bad_request,
@@ -686,12 +676,14 @@ module.exports = class SessionsHelper {
 				})
 			}
 			if (
-				(sessionData.mentor_id && sessionData.created_by && sessionData.mentor_id !== sessionData.created_by) ||
+				(sessionDetail.mentor_id &&
+					sessionDetail.created_by &&
+					sessionDetail.mentor_id !== sessionDetail.created_by) ||
 				bodyData.mentee
 			) {
 				isSessionCreatedByManager = true
 				// If session is created by manager update userId with mentor_id
-				userId = sessionData.mentor_id
+				userId = sessionDetail.mentor_id
 			}
 			if (bodyData.mentor_id) {
 				userId = bodyData.mentor_id
@@ -711,7 +703,7 @@ module.exports = class SessionsHelper {
 			let isEditingAllowedAtAnyTime = process.env.SESSION_EDIT_WINDOW_MINUTES == 0
 
 			const currentDate = moment.utc()
-			const startDate = moment.unix(sessionData.start_date)
+			const startDate = moment.unix(sessionDetail.start_date)
 			let elapsedMinutes = startDate.diff(currentDate, 'minutes')
 
 			if (!isEditingAllowedAtAnyTime && elapsedMinutes < process.env.SESSION_EDIT_WINDOW_MINUTES) {
@@ -770,7 +762,7 @@ module.exports = class SessionsHelper {
 
 			//validationData = utils.removeParentEntityTypes(JSON.parse(JSON.stringify(validationData)))
 			if (bodyData.status == common.VALID_STATUS) {
-				bodyData.status = sessionData.status
+				bodyData.status = sessionDetail.status
 			}
 			const validationData = removeDefaultOrgEntityTypes(entityTypes, defaults.orgCode)
 			if (!method === common.DELETE_METHOD) {
@@ -828,9 +820,9 @@ module.exports = class SessionsHelper {
 			let mentorUpdated = false
 
 			let message
-			const sessionRelatedJobIds = common.notificationJobIdPrefixes.map((element) => element + sessionData.id)
+			const sessionRelatedJobIds = common.notificationJobIdPrefixes.map((element) => element + sessionDetail.id)
 			if (method == common.DELETE_METHOD) {
-				if (sessionData.status == common.PUBLISHED_STATUS) {
+				if (sessionDetail.status == common.PUBLISHED_STATUS) {
 					await sessionQueries.deleteSession(
 						{
 							id: sessionId,
@@ -864,7 +856,7 @@ module.exports = class SessionsHelper {
 			} else {
 				// If the api is called for updating the session details execution flow enters to this  else block
 				// If request body contains mentees field enroll/unenroll mentees from the session
-				if (bodyData.mentees && sessionData.status != common.LIVE_STATUS) {
+				if (bodyData.mentees && sessionDetail.status != common.LIVE_STATUS) {
 					// Fetch mentees currently enrolled to the session
 					const sessionAttendees = await sessionAttendeesQueries.findAll(
 						{
@@ -889,10 +881,11 @@ module.exports = class SessionsHelper {
 							sessionId,
 							menteesToAdd,
 							bodyData.time_zone,
-							bodyData.mentor_id ? bodyData.mentor_id : sessionDetail.mentor_id,
 							orgId,
 							orgCode,
-							tenantCode
+							tenantCode,
+							bodyData.mentor_id ? bodyData.mentor_id : sessionDetail.mentor_id,
+							sessionDetail
 						)
 					}
 
@@ -901,9 +894,9 @@ module.exports = class SessionsHelper {
 						await this.removeMentees(
 							sessionId,
 							menteesToRemove,
-							bodyData.mentor_id ? bodyData.mentor_id : sessionDetail.mentor_id,
 							orgCode,
-							tenantCode
+							tenantCode,
+							bodyData.mentor_id ? bodyData.mentor_id : sessionDetail.mentor_id
 						)
 					}
 				}
@@ -1319,8 +1312,6 @@ module.exports = class SessionsHelper {
 						}
 						if (notifyUser) {
 							let kafkaRes = await kafkaCommunication.pushEmailToKafka(payload)
-							console.log('Kafka payload:', payload)
-							console.log('Session attendee mapped, isSessionReschedule true and kafka res: ', kafkaRes)
 						}
 					}
 					if (preResourceSendEmail || postResourceSendEmail) {
@@ -1350,7 +1341,6 @@ module.exports = class SessionsHelper {
 
 						let kafkaRes = await kafkaCommunication.pushEmailToKafka(payload)
 						console.log('Kafka payload:', payload)
-						console.log('Session attendee mapped, preResourceSendEmail true and kafka res: ', kafkaRes)
 					}
 					if (mentorUpdated) {
 						const payload = {
@@ -1378,7 +1368,6 @@ module.exports = class SessionsHelper {
 
 						let kafkaRes = await kafkaCommunication.pushEmailToKafka(payload)
 						console.log('Kafka payload:', payload)
-						console.log('Session attendee emails, mentorUpdated true and kafka res: ', kafkaRes)
 					}
 					// if (triggerSessionMeetinkAddEmail) {
 					// 	const payload = {
@@ -2024,10 +2013,9 @@ module.exports = class SessionsHelper {
 		isSelfEnrolled = true,
 		session = {},
 		mentorId = null,
-		roles,
-		orgId,
 		orgCode,
-		tenantCode
+		tenantCode,
+		roles
 	) {
 		try {
 			let email
@@ -2073,22 +2061,6 @@ module.exports = class SessionsHelper {
 			if (!session) {
 				return responses.failureResponse({
 					message: 'SESSION_NOT_FOUND',
-					statusCode: httpStatusCode.bad_request,
-					responseCode: 'CLIENT_ERROR',
-				})
-			}
-
-			const defaults = await getDefaults()
-			if (!defaults.orgCode) {
-				return responses.failureResponse({
-					message: 'DEFAULT_ORG_CODE_NOT_SET',
-					statusCode: httpStatusCode.bad_request,
-					responseCode: 'CLIENT_ERROR',
-				})
-			}
-			if (!defaults.tenantCode) {
-				return responses.failureResponse({
-					message: 'DEFAULT_TENANT_CODE_NOT_SET',
 					statusCode: httpStatusCode.bad_request,
 					responseCode: 'CLIENT_ERROR',
 				})
@@ -2294,7 +2266,7 @@ module.exports = class SessionsHelper {
 	 * @name enroll
 	 * @param {String} sessionId 				- Session id.
 	 * @param {Object} userTokenData
-	 * @param {String} userTokenData._id 		- user id.
+	 * @param {String} userTokenData.id 		- user id.
 	 * @param {Boolean} isSelfEnrolled 			- true/false.
 	 * @param {Boolean} session 				- session details.
 	 * @returns {JSON} 							- UnEnroll session.
@@ -2305,8 +2277,8 @@ module.exports = class SessionsHelper {
 		userTokenData,
 		isSelfUnenrollment = true,
 		session = {},
-		tenantCode,
 		mentorId = null,
+		tenantCode,
 		orgCode
 	) {
 		try {
@@ -3462,6 +3434,12 @@ module.exports = class SessionsHelper {
 	 * @name addMentees
 	 * @param {String} sessionId 				- Session id.
 	 * @param {Number} menteeIds				- Mentees id.
+	 * @param {String} timeZone					- Time zone.
+	 * @param {String} organizationId			- Organization id.
+	 * @param {String} organizationCode			- Organization code.
+	 * @param {String} tenantCode				- Tenant code.
+	 * @param {String} mentorId					- Mentor id (optional).
+	 * @param {Object} sessionDetails			- Pre-fetched session details (optional, for optimization).
 	 * @returns {JSON} 							- Session details
 	 */
 
@@ -3469,10 +3447,11 @@ module.exports = class SessionsHelper {
 		sessionId,
 		menteeIds,
 		timeZone,
-		mentorId = null,
 		organizationId,
 		organizationCode,
-		tenantCode
+		tenantCode,
+		mentorId = null,
+		sessionDetails = null
 	) {
 		try {
 			// Check if session exists - use database query instead of cache for reliability
@@ -3505,26 +3484,29 @@ module.exports = class SessionsHelper {
 			// Enroll mentees
 			const successIds = []
 			const failedIds = []
-			const enrollPromises = mentees.map(
-				(menteeData) =>
-					this.enroll(
-						sessionId,
-						{ user_id: menteeData.user_id }, // Fix: Correct user object structure
-						timeZone,
-						false, // Fix: Always false for mentees being added
-						false, // isSelfEnrolled - false for manager adding mentees
-						sessionDetails,
-						null, // mentorId
-						[], // roles
-						organizationId,
-						organizationCode,
-						tenantCode
-					)
-						.then((response) => ({
-							id: menteeData.user_id, // Fix: Use consistent user_id field
-							status: response.statusCode === httpStatusCode.created ? 'fulfilled' : 'rejected',
-						}))
-						.catch(() => ({ id: menteeData.user_id, status: 'rejected' })) // Fix: Use user_id consistently
+			const effectiveMentorId = mentorId ? mentorId : sessionData.mentor_id
+
+			const enrollPromises = mentees.map((menteeData) =>
+				this.enroll(
+					sessionId,
+					{ user_id: menteeData.user_id },
+					timeZone,
+					menteeData.is_mentor,
+					false,
+					sessionData,
+					effectiveMentorId, // mentorId
+					organizationCode,
+					tenantCode
+				)
+					.then((response) => ({
+						id: menteeData.user_id,
+						status: response.statusCode === httpStatusCode.created ? 'fulfilled' : 'rejected',
+					}))
+					.catch((error) => ({
+						id: menteeData.user_id,
+						status: 'rejected',
+						error: error.message,
+					}))
 			)
 
 			// Wait for all enrollments to settle
@@ -3682,7 +3664,7 @@ module.exports = class SessionsHelper {
 	 * @returns {JSON} 							- unenroll status
 	 */
 
-	static async removeMentees(sessionId, menteeIds, mentorId = null, orgCode, tenantCode) {
+	static async removeMentees(sessionId, menteeIds, orgCode, tenantCode, mentorId = null) {
 		try {
 			// check if session exists or not
 			const sessionDetails =
@@ -3723,8 +3705,8 @@ module.exports = class SessionsHelper {
 					menteeData,
 					false,
 					sessionDetails,
-					tenantCode,
 					mentorId ? mentorId : sessionDetails.mentor_id,
+					tenantCode,
 					orgCode
 				)
 					.then((response) => {
@@ -3949,7 +3931,6 @@ module.exports = class SessionsHelper {
 			}
 
 			//push to queue
-			console.log('DEBUG job creation - organizationCode:', organizationCode, 'organizationId:', organizationId)
 			const redisConfiguration = utils.generateRedisConfigForQueue()
 			const sessionQueue = new Queue(process.env.DEFAULT_QUEUE, redisConfiguration)
 			const jobData = {
@@ -3964,7 +3945,6 @@ module.exports = class SessionsHelper {
 					tenant_code: tenantCode,
 				},
 			}
-			console.log('DEBUG job data:', JSON.stringify(jobData, null, 2))
 			const session = await sessionQueue.add('upload_sessions', jobData, {
 				removeOnComplete: true,
 				attempts: common.NO_OF_ATTEMPTS,

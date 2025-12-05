@@ -166,10 +166,9 @@ module.exports = class Sessions {
 				true,
 				{},
 				null,
-				req.decodedToken.roles,
-				req.decodedToken.organization_id,
 				req.decodedToken.organization_code,
-				req.decodedToken.tenant_code
+				req.decodedToken.tenant_code,
+				req.decodedToken.roles
 			)
 			return enrolledSession
 		} catch (error) {
@@ -196,8 +195,8 @@ module.exports = class Sessions {
 				req.decodedToken,
 				true, // isSelfUnenrollment
 				{}, // session
-				tenantCode,
 				null, // mentorId
+				tenantCode,
 				orgCode
 			)
 			return unEnrolledSession
@@ -424,7 +423,6 @@ module.exports = class Sessions {
 			const sessionDetails = await sessionService.removeMentees(
 				req.params.id, // session id
 				req.body.mentees, // Array of mentee ids
-				req.decodedToken.id,
 				req.decodedToken.organization_code,
 				req.decodedToken.tenant_code
 			)
