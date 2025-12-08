@@ -687,7 +687,6 @@ module.exports = class SessionsHelper {
 				userId = bodyData.mentor_id
 			}
 
-			// Use direct database query instead of cache
 			let mentorExtension =
 				(await cacheHelper.mentor.getCacheOnly(tenantCode, userId)) ??
 				(await mentorExtensionQueries.getMentorExtension(userId, [], false, tenantCode))
@@ -930,7 +929,7 @@ module.exports = class SessionsHelper {
 					}
 					this.setMentorPassword(sessionId, bodyData.mentor_id, tenantCode)
 
-					await this._clearUserCache([bodyData.mentor_id], tenantCode)
+					await this._clearUserCache([sessionDetail.mentor_id, bodyData.mentor_id], tenantCode)
 				}
 
 				if (sessionDetail.status === common.LIVE_STATUS) {
@@ -2277,12 +2276,15 @@ module.exports = class SessionsHelper {
 			// If mentee request unenroll get email and name from user service via api call.
 			// Else it will be available in userTokenData
 			if (isSelfUnenrollment) {
-				const userDetails = await mentorExtensionQueries.getMentorExtension(
-					userId,
-					['user_id', 'name', 'email'],
-					true,
-					tenantCode
-				)
+				const userDetails =
+					(await cacheHelper.mentee.getCacheOnly(tenantCode, orgCode, userId)) ??
+					(await cacheHelper.mentor.getCacheOnly(tenantCode, orgCode, userId)) ??
+					(await mentorExtensionQueries.getMentorExtension(
+						userId,
+						['user_id', 'name', 'email'],
+						true,
+						tenantCode
+					))
 
 				email = userDetails.email
 				name = userDetails.name
@@ -2308,12 +2310,10 @@ module.exports = class SessionsHelper {
 			}
 
 			if (mentorId || session.mentor_id) {
-				const mentorDetails = await mentorExtensionQueries.getMentorExtension(
-					mentorId ? mentorId : session.mentor_id,
-					['name'],
-					true,
-					tenantCode
-				)
+				let mentor_id = mentorId ?? session.mentor_id
+				const mentorDetails =
+					(await cacheHelper.mentor.getCacheOnly(tenantCode, orgCode, mentor_id)) ??
+					(await mentorExtensionQueries.getMentorExtension(mentor_id, ['name'], true, tenantCode))
 				session.mentor_name = mentorDetails.name
 			} else {
 				session.mentor_name = common.USER_NOT_FOUND
@@ -2465,12 +2465,13 @@ module.exports = class SessionsHelper {
 					{ share_link: shareLink },
 					tenantCode
 				)
+				try {
+					await cacheHelper.sessions.delete(tenantCode, sessionId)
+				} catch (cacheError) {
+					// Cache invalidation failure - continue operation
+				}
 			}
-			try {
-				await cacheHelper.sessions.delete(tenantCode, sessionId)
-			} catch (cacheError) {
-				// Cache invalidation failure - continue operation
-			}
+
 			return responses.successResponse({
 				message: 'SESSION_LINK_GENERATED_SUCCESSFULLY',
 				statusCode: httpStatusCode.ok,
@@ -2854,6 +2855,12 @@ module.exports = class SessionsHelper {
 				tenantCode,
 				{ returning: false, raw: true }
 			)
+
+			try {
+				await cacheHelper.sessions.delete(tenantCode, sessionId)
+			} catch (cacheError) {
+				// Cache invalidation failure - continue operation
+			}
 
 			if (sessionDetails?.meeting_info?.value == common.BBB_VALUE && isBBB) {
 				const recordingInfo = await bigBlueButtonRequests.getRecordings(sessionId)
