@@ -112,6 +112,9 @@ exports.findAll = async (filter, tenantCode, options = {}) => {
 
 exports.unEnrollAllAttendeesOfSessions = async (sessionIds, tenantCode) => {
 	try {
+		if (!tenantCode) {
+			throw new Error('tenantCode is required')
+		}
 		const recordsToDelete = await SessionAttendee.findAll({
 			where: {
 				session_id: { [Op.in]: sessionIds },
