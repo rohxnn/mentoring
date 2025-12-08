@@ -3494,7 +3494,7 @@ module.exports = class SessionsHelper {
 			// Enroll mentees
 			const successIds = []
 			const failedIds = []
-			const effectiveMentorId = mentorId ? mentorId : sessionData.mentor_id
+			const effectiveMentorId = mentorId ? mentorId : sessionDetails.mentor_id
 
 			const enrollPromises = mentees.map((menteeData) =>
 				this.enroll(
@@ -3503,7 +3503,7 @@ module.exports = class SessionsHelper {
 					timeZone,
 					menteeData.is_mentor,
 					false,
-					sessionData,
+					sessionDetails,
 					effectiveMentorId, // mentorId
 					organizationCode,
 					tenantCode

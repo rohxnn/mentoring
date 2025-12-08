@@ -642,7 +642,7 @@ module.exports = class AdminService {
 
 			// Unenroll attendees from sessions
 			const sessionIds = removedSessionsDetail.map((session) => session.id)
-			const unenrollDetails = await sessionAttendeesQueries.unEnrollAllAttendeesOfSessions(sessionIds)
+			const unenrollDetails = await sessionAttendeesQueries.unEnrollAllAttendeesOfSessions(sessionIds, tenantCode)
 			if (unenrollDetails && unenrollDetails.deletedCount > 0 && Array.isArray(unenrollDetails.deletedRecords)) {
 				for (const menteeData of unenrollDetails.deletedRecords) {
 					try {
