@@ -642,7 +642,15 @@ module.exports = class AdminService {
 
 			// Unenroll attendees from sessions
 			const sessionIds = removedSessionsDetail.map((session) => session.id)
-			const unenrollCount = await sessionAttendeesQueries.unEnrollAllAttendeesOfSessions(sessionIds)
+			const unenrollDetails = await sessionAttendeesQueries.unEnrollAllAttendeesOfSessions(sessionIds)
+			if (unenrollDetails.deletedCount > 0) {
+				const menteeIds = unenrollDetails.deletedRecords.map((item) => item.mentee_id)
+				for (const menteeId of menteeIds) {
+					try {
+						cacheHelper.mentee.delete(tenantCode, menteeId)
+					} catch (error) {}
+				}
+			}
 			return notificationResult
 		} catch (error) {
 			console.error('An error occurred in notifySessionAttendees:', error)
