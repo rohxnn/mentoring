@@ -36,7 +36,7 @@ exports.getEnrolledMentees = async (sessionId, queryParams, tenantCode) => {
 		})
 
 		// Fetch missing user details from DB if any
-		let userDetailsResult = await userRequests.getUserDetailedListUsingCache(menteesMapData, tenantCode)
+		let userDetailsResult = await userRequests.getUserDetailedListUsingCache(menteesMapData, tenantCode, true, true)
 		let enrolledUsers = userDetailsResult?.result || []
 
 		enrolledUsers.forEach((user) => {
