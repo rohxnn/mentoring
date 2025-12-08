@@ -24,6 +24,11 @@ const cacheHelper = require('@generics/cacheHelper')
 
 module.exports = class UserInviteHelper {
 	static async uploadSession(data) {
+		console.log(`🚀 [UPLOAD SESSION START] Beginning bulk session upload process`)
+		console.log(
+			`📊 [UPLOAD DATA] User: ${data.user.userId}, Org: ${data.user.organization_code}, Tenant: ${data.user.tenant_code}`
+		)
+		console.log(`📁 [FILE INFO] Path: ${data.fileDetails.input_path}`)
 		return new Promise(async (resolve, reject) => {
 			try {
 				const filePath = data.fileDetails.input_path
@@ -36,21 +41,37 @@ module.exports = class UserInviteHelper {
 				const defaultOrgCode = data.user.defaultOrganiztionCode
 				const defaultTenantCode = data.user.defaultTenantCode
 
+				console.log(`👤 [USER LOOKUP] Getting user details for ID: ${userId}`)
 				const mentor = await cacheHelper.mentee.get(tenantCode, orgCode, userId)
-				if (!mentor) throw createUnauthorizedResponse('USER_NOT_FOUND')
+				if (!mentor) {
+					console.log(`❌ [USER NOT FOUND] User ${userId} not found in cache`)
+					throw createUnauthorizedResponse('USER_NOT_FOUND')
+				}
+				console.log(`✅ [USER FOUND] User: ${mentor.name}, Is Mentor: ${mentor.is_mentor}`)
 
 				const isMentor = mentor.is_mentor
 
 				// download file to local directory
+				console.log(`⬇️ [DOWNLOAD START] Downloading CSV file: ${filePath}`)
 				const response = await this.downloadCSV(filePath)
-				if (!response.success) throw new Error('FAILED_TO_DOWNLOAD')
+				if (!response.success) {
+					console.log(`❌ [DOWNLOAD FAILED] Failed to download CSV file`)
+					throw new Error('FAILED_TO_DOWNLOAD')
+				}
+				console.log(`✅ [DOWNLOAD SUCCESS] CSV downloaded to: ${response.result.downloadPath}`)
 
 				// extract data from csv
+				console.log(`📄 [CSV PARSE START] Parsing CSV data`)
 				const parsedFileData = await this.extractDataFromCSV(response.result.downloadPath)
-				if (!parsedFileData.success) throw new Error('FAILED_TO_READ_CSV')
+				if (!parsedFileData.success) {
+					console.log(`❌ [CSV PARSE FAILED] Failed to parse CSV data`)
+					throw new Error('FAILED_TO_READ_CSV')
+				}
 				const invitees = parsedFileData.result.data
+				console.log(`✅ [CSV PARSE SUCCESS] Parsed ${invitees.length} rows from CSV`)
 
 				// create outPut file and create invites
+				console.log(`🏭 [PROCESSING START] Starting session processing for ${invitees.length} sessions`)
 				const createResponse = await this.processSessionDetails(
 					invitees,
 					inviteeFileDir,
@@ -63,6 +84,7 @@ module.exports = class UserInviteHelper {
 					defaultOrgCode,
 					defaultTenantCode
 				)
+				console.log(`🏁 [PROCESSING COMPLETE] Session processing finished. Success: ${createResponse.success}`)
 				if (createResponse.success == false) console.log(':::::::::', createResponse.message)
 				const outputFilename = path.basename(createResponse.result.outputFilePath)
 				// upload output file to cloud
@@ -747,14 +769,20 @@ module.exports = class UserInviteHelper {
 		defaultOrgCode,
 		defaultTenantCode
 	) {
+		console.log(`📋 [PROCESS SESSION DETAILS] Starting processing of ${csvData.length} sessions`)
+		console.log(`📋 [PARAMS] UserId: ${userId}, OrgId: ${orgId}, TenantCode: ${tenantCode}, OrgCode: ${orgCode}`)
 		try {
 			const outputFileName = utils.generateFileName(common.sessionOutputFile, common.csvExtension)
 			let rowsWithStatus = []
 			let validRowsCount = 0
 			let invalidRowsCount = 0
+			console.log(`🔄 [SESSION LOOP] Starting to process each session individually`)
 			for (const session of csvData) {
+				console.log(`🎯 [SESSION] Processing: ${session.title || 'Untitled'}, Action: ${session.action}`)
 				if (session.action.replace(/\s+/g, '').toLowerCase() === common.ACTIONS.CREATE) {
+					console.log(`➡️ [CREATE ACTION] Processing CREATE action for session: ${session.title}`)
 					if (!session.id) {
+						console.log(`🔍 [VALIDATION START] Starting validation for session: ${session.title}`)
 						const {
 							validRowsCount: valid,
 							invalidRowsCount: invalid,
@@ -767,6 +795,12 @@ module.exports = class UserInviteHelper {
 							invalidRowsCount,
 							tenantCode
 						)
+						console.log(
+							`📊 [VALIDATION RESULT] Session: ${session.title}, Status: ${processedSession.status}`
+						)
+						if (processedSession.statusMessage) {
+							console.log(`💬 [STATUS MESSAGE] ${processedSession.statusMessage}`)
+						}
 						validRowsCount = valid
 						invalidRowsCount = invalid
 						rowsWithStatus.push(processedSession)
@@ -982,10 +1016,13 @@ module.exports = class UserInviteHelper {
 	}
 
 	static async processCreateData(SessionsArray, userId, orgId, isMentor, notifyUser, tenantCode, orgCode) {
+		console.log(`📋 [BULK PROCESSING] Starting to process ${SessionsArray.length} sessions for user ${userId}`)
 		const output = []
 		for (const data of SessionsArray) {
+			console.log(`🔄 [PROCESSING SESSION] Title: ${data.title}, Action: ${data.action}, Status: ${data.status}`)
 			if (data.status != 'Invalid') {
 				if (data.action.replace(/\s+/g, '').toLowerCase() === common.ACTIONS.CREATE) {
+					console.log(`✅ [VALID SESSION] Processing session: ${data.title}`)
 					data.status = common.PUBLISHED_STATUS
 					data.time_zone =
 						data.time_zone == common.TIMEZONE
@@ -996,6 +1033,8 @@ module.exports = class UserInviteHelper {
 						delete data.meeting_info
 					}
 					const { id, ...dataWithoutId } = data
+					console.log(`📝 [SESSION CREATION] Attempting to create session: ${data.title}`)
+					console.log(`📝 [SESSION CREATION] User: ${userId}, Org: ${orgCode}, Tenant: ${tenantCode}`)
 					const sessionCreation = await sessionService.create(
 						dataWithoutId,
 						userId,
@@ -1005,7 +1044,13 @@ module.exports = class UserInviteHelper {
 						notifyUser,
 						tenantCode
 					)
+					console.log(
+						`📝 [SESSION CREATION RESULT] Status: ${sessionCreation.statusCode}, Message: ${sessionCreation.message}`
+					)
 					if (sessionCreation.statusCode === httpStatusCode.created) {
+						console.log(
+							`✅ [SESSION CREATED] Successfully created session ID: ${sessionCreation.result.id}`
+						)
 						data.statusMessage = this.appendWithComma(data.statusMessage, sessionCreation.message)
 						data.id = sessionCreation.result.id
 						data.recommended_for = sessionCreation.result.recommended_for.map((item) => item.label)
@@ -1020,6 +1065,9 @@ module.exports = class UserInviteHelper {
 								: (data.time_zone = common.TIMEZONE_UTC)
 						output.push(data)
 					} else {
+						console.log(
+							`❌ [SESSION CREATION FAILED] Status: ${sessionCreation.statusCode}, Message: ${sessionCreation.message}`
+						)
 						data.status = 'Invalid'
 						data.time_zone =
 							data.time_zone == common.IST_TIMEZONE

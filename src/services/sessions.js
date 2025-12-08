@@ -376,7 +376,16 @@ module.exports = class SessionsHelper {
 
 			// If menteeIds are provided in the req body enroll them
 			if (menteeIdsToEnroll.length > 0) {
-				await this.addMentees(data.id, menteeIdsToEnroll, bodyData.time_zone, orgId, orgCode, tenantCode)
+				await this.addMentees(
+					data.id,
+					menteeIdsToEnroll,
+					bodyData.time_zone,
+					orgId,
+					orgCode,
+					tenantCode,
+					bodyData.mentor_id,
+					data
+				)
 			}
 
 			if (Array.isArray(bodyData?.resources) && bodyData.resources.length > 0) {
