@@ -2814,38 +2814,44 @@ module.exports = class SessionsHelper {
 				)
 
 				let sessionAttendees
-				if (isSessionCached) {
+				if (isSessionCached && Array.isArray(sessionDetails.mentees)) {
 					sessionAttendees = sessionDetails.mentees
 				} else {
 					sessionAttendees = await getEnrolledMentees(sessionId, {}, tenantCode)
 				}
 
-				sessionAttendees.forEach(async (attendee) => {
-					const payload = {
-						type: 'email',
-						email: {
-							to: attendee.email,
-							subject: templateData.subject,
-							body: utils.composeEmailBody(templateData.body, {
-								mentorName: sessionDetails.mentor_name,
-								sessionTitle: sessionDetails.title,
-								sessionLink: process.env.PORTAL_BASE_URL + '/session-detail/' + sessionDetails.id,
-								startDate: utils.getTimeZone(
-									sessionDetails.start_date,
-									common.dateFormat,
-									sessionDetails.time_zone
-								),
-								startTime: utils.getTimeZone(
-									sessionDetails.start_date,
-									common.timeFormat,
-									sessionDetails.time_zone
-								),
-							}),
-						},
-					}
+				if (!Array.isArray(sessionAttendees) || sessionAttendees.length === 0) {
+					// No attendees to notify; continue to mark session completed
+					sessionAttendees = []
+				}
+				if (sessionAttendees.length > 0) {
+					sessionAttendees.forEach(async (attendee) => {
+						const payload = {
+							type: 'email',
+							email: {
+								to: attendee.email,
+								subject: templateData.subject,
+								body: utils.composeEmailBody(templateData.body, {
+									mentorName: sessionDetails.mentor_name,
+									sessionTitle: sessionDetails.title,
+									sessionLink: process.env.PORTAL_BASE_URL + '/session-detail/' + sessionDetails.id,
+									startDate: utils.getTimeZone(
+										sessionDetails.start_date,
+										common.dateFormat,
+										sessionDetails.time_zone
+									),
+									startTime: utils.getTimeZone(
+										sessionDetails.start_date,
+										common.timeFormat,
+										sessionDetails.time_zone
+									),
+								}),
+							},
+						}
 
-					let kafkaRes = await kafkaCommunication.pushEmailToKafka(payload)
-				})
+						let kafkaRes = await kafkaCommunication.pushEmailToKafka(payload)
+					})
+				}
 			}
 
 			if (
