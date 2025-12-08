@@ -138,8 +138,6 @@ exports.unEnrollAllAttendeesOfSessions = async (sessionIds, tenantCode) => {
 			deletedCount: destroyedCount,
 			deletedRecords: recordsToDelete,
 		}
-
-		return destroyedCount
 	} catch (error) {
 		return error
 	}
