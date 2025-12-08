@@ -40,20 +40,20 @@ module.exports = class UserServiceHelper {
 		}
 	}
 
-	static async getMissingUserIdsAndCacheData(userList, tenantCode) {
+	static async getMissingUserIdsAndCacheData(userIdList, tenantCode) {
 		const missingUserIds = []
 		const cacheFoundData = []
 
-		for (const user of userList) {
+		for (const userId of userIdList) {
 			// Check mentees cache, then mentors cache
 			const cachedUser =
-				(await cacheHelper.mentee.getCacheOnly(tenantCode, user)) ??
-				(await cacheHelper.mentor.getCacheOnly(tenantCode, user))
+				(await cacheHelper.mentee.getCacheOnly(tenantCode, userId)) ??
+				(await cacheHelper.mentor.getCacheOnly(tenantCode, userId))
 
 			if (cachedUser) {
 				cacheFoundData.push(cachedUser)
 			} else {
-				missingUserIds.push(user)
+				missingUserIds.push(userId)
 			}
 		}
 

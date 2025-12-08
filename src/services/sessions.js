@@ -923,7 +923,7 @@ module.exports = class SessionsHelper {
 					await sessionQueries.addOwnership(sessionId, bodyData.mentor_id)
 					mentorUpdated = true
 					const newMentor =
-						(await cacheHelper.mentor.getCacheOnly(tenantCode, orgCode, bodyData.mentor_id)) ??
+						(await cacheHelper.mentor.getCacheOnly(tenantCode, bodyData.mentor_id)) ??
 						(await mentorExtensionQueries.getMentorExtension(bodyData.mentor_id, ['name'], true))
 					if (newMentor?.name) {
 						bodyData.mentor_name = newMentor.name
@@ -2105,15 +2105,15 @@ module.exports = class SessionsHelper {
 			) {
 				emailTemplateCode = process.env.MENTEE_PUBLIC_SESSION_ENROLLMENT_BY_MANAGER_EMAIL_TEMPLATE
 				const sessionCreatorName =
-					(await cacheHelper.mentee.getCacheOnly(tenantCode, orgCode, session.created_by)) ??
-					(await cacheHelper.mentor.getCacheOnly(tenantCode, orgCode, session.created_by)) ??
+					(await cacheHelper.mentee.getCacheOnly(tenantCode, session.created_by)) ??
+					(await cacheHelper.mentor.getCacheOnly(tenantCode, session.created_by)) ??
 					(await menteeExtensionQueries.getMenteeExtension(session.created_by, ['name'], true, tenantCode))
 				creatorName = sessionCreatorName.name
 			}
 
 			if (mentorId || session.mentor_id) {
 				const mentorDetails =
-					(await cacheHelper.mentor.getCacheOnly(tenantCode, orgCode, mentorId || session.mentor_id)) ??
+					(await cacheHelper.mentor.getCacheOnly(tenantCode, mentorId || session.mentor_id)) ??
 					(await mentorExtensionQueries.getMentorExtension(
 						mentorId || session.mentor_id,
 						['name'],
@@ -3554,7 +3554,7 @@ module.exports = class SessionsHelper {
 			const defaults = await getDefaults()
 
 			const userDetails =
-				(await cacheHelper.mentor.getCacheOnly(tenantCode, orgCode, sessionDetail.mentor_id)) ??
+				(await cacheHelper.mentor.getCacheOnly(tenantCode, sessionDetail.mentor_id)) ??
 				(await mentorExtensionQueries.getMentorExtension(
 					sessionDetail.mentor_id,
 					['name', 'email'],

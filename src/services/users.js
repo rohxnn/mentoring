@@ -351,21 +351,17 @@ module.exports = class UserHelper {
 		if (isRoleChanged) {
 			//If role is changed, the role change, org policy changes for that user
 			//and additional data update of the user is done by orgAdmin's roleChange workflow
-			const roleChangeResult = await orgAdminService.roleChange(
-				roleChangePayload,
-				userExtensionData,
-				userExtensionData.tenant_code
-			)
+			const roleChangeResult = await orgAdminService.roleChange(roleChangePayload, userExtensionData, tenant_code)
 
 			// Invalidate cache after role change - separate try-catch for each cache
 			try {
-				await cacheHelper.mentee.delete(userExtensionData.tenant_code, userExtensionData.id)
+				await cacheHelper.mentee.delete(tenant_code, userExtensionData.id)
 			} catch (cacheError) {
 				console.error(`❌ Failed to invalidate mentee cache after role change:`, cacheError)
 			}
 
 			try {
-				await cacheHelper.mentor.delete(userExtensionData.tenant_code, userExtensionData.id)
+				await cacheHelper.mentor.delete(tenant_code, userExtensionData.id)
 			} catch (cacheError) {
 				console.error(`❌ Failed to invalidate mentor cache after role change:`, cacheError)
 			}
@@ -392,13 +388,9 @@ module.exports = class UserHelper {
 			// Invalidate cache after user update
 			try {
 				if (isAMentee) {
-					await cacheHelper.mentee.delete(
-						userExtensionData.tenant_code,
-						userExtensionData.organization.code,
-						userExtensionData.id
-					)
+					await cacheHelper.mentee.delete(tenant_code, userExtensionData.id)
 				} else {
-					await cacheHelper.mentor.delete(userExtensionData.tenant_code, userExtensionData.id)
+					await cacheHelper.mentor.delete(tenant_code, userExtensionData.id)
 				}
 			} catch (cacheError) {
 				console.error(`❌ Failed to invalidate user cache after update:`, cacheError)
@@ -456,7 +448,15 @@ module.exports = class UserHelper {
 		if (!userDetails.data.result) {
 			return 'FAILED_TO_GET_REQUIRED_USER_DETAILS'
 		} else {
-			const requiredFields = ['id', 'user_roles', 'email', 'name', 'organization_code', 'organization_id']
+			const requiredFields = [
+				'id',
+				'user_roles',
+				'email',
+				'name',
+				'organization_code',
+				'organization_id',
+				'tenant_code',
+			]
 			for (const field of requiredFields) {
 				if (!userDetails.data.result[field] || userDetails.data.result[field] == null) {
 					return 'FAILED_TO_GET_REQUIRED_USER_DETAILS'

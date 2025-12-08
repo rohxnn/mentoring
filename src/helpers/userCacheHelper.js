@@ -75,23 +75,17 @@ async function getUserExtensionCached(userId, tenantCode, preferredRole = 'mente
  */
 async function getMentorExtensionCached(userId, attributes = [], unScoped = false, tenantCode) {
 	try {
-		// Get mentor extension to determine org code (always get full data for org_code)
-		const mentorExtension = await mentorQueries.getMentorExtension(userId, [], false, tenantCode)
-		if (!mentorExtension) {
-			return null
-		}
-
 		let cachedUser = null
 
 		// Try mentor cache first (only if no specific attributes requested)
 		if (attributes.length === 0) {
-			cachedUser = await cacheHelper.mentor.get(tenantCode, userId)
+			cachedUser = await cacheHelper.mentor.getCacheOnly(tenantCode, userId)
 			if (cachedUser) {
 				return cachedUser
 			}
 
 			// Fallback to mentee cache
-			cachedUser = await cacheHelper.mentee.get(tenantCode, userId)
+			cachedUser = await cacheHelper.mentee.getCacheOnly(tenantCode, userId)
 			if (cachedUser) {
 				return cachedUser
 			}

@@ -469,16 +469,29 @@ module.exports = class MenteesHelper {
 			let sessionData = await cacheHelper.sessions.get(tenantCode, sessionId)
 			if (sessionData) {
 				sessionWithAttendee = sessionData.mentees?.find((mentee) => String(mentee.id) === String(userId))
-				sessionWithAttendee.attendee_id = sessionWithAttendee.id
-				sessionWithAttendee.enrolled_type = sessionWithAttendee.type
-				sessionWithAttendee.attendee_meeting_info = sessionWithAttendee.meeting_info ?? sessionData.meeting_info
+				if (sessionWithAttendee) {
+					sessionWithAttendee = {
+						...sessionWithAttendee,
+						id: sessionWithAttendee.id, // Keep id for DB updates
+						attendee_id: sessionWithAttendee.id,
+						enrolled_type: sessionWithAttendee.type,
+						attendee_meeting_info: sessionWithAttendee.meeting_info ?? sessionData.meeting_info,
+					}
+				}
 			} else {
 				sessionWithAttendee = await sessionQueries.findSessionWithAttendee(
 					sessionId,
 					mentee.user_id,
 					tenantCode
 				)
+
 				sessionData = { ...sessionWithAttendee }
+				// Normalize DB result to match cache structure
+				if (sessionWithAttendee) {
+					sessionWithAttendee.attendee_id = sessionWithAttendee.id
+					sessionWithAttendee.enrolled_type = sessionWithAttendee.enrolled_type || sessionWithAttendee.type
+					sessionWithAttendee.attendee_meeting_info = sessionWithAttendee.meeting_info
+				}
 			}
 
 			if (!sessionWithAttendee) {
@@ -1979,9 +1992,10 @@ module.exports = class MenteesHelper {
 				try {
 					// Step 1: Try to get user details from cache first for better performance
 					let user = null
-					let userOrgCode = null
 
-					user = await cacheHelper.mentor.get(tenantCode, id)
+					user =
+						(await cacheHelper.mentor.getCacheOnly(tenantCode, id)) ??
+						(await cacheHelper.mentee.getCacheOnly(tenantCode, id))
 
 					// Step 2: Fallback to database if cache miss (include encrypted email field)
 					if (!user) {

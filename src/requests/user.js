@@ -672,7 +672,7 @@ const listOrganization = function (organizationIds = []) {
 				if (err) {
 					result.success = false
 				} else {
-					result.data = JSON.parse(data.body) ?? data.body
+					result.data = JSON.parse(data.body)
 				}
 				return resolve(result)
 			}
