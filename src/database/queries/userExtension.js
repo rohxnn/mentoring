@@ -504,6 +504,7 @@ module.exports = class MenteeExtensionQueries {
 				email,
 				image,
 				organization_id,
+				organization_code,
 				designation,
 				area_of_expertise,
 				education_qualification,

@@ -683,93 +683,6 @@ const listOrganization = function (organizationIds = []) {
 }
 
 /**
- * @method organizationList
- * @description Fetches organization details based on provided organization IDs, either from the database or an external API.
- *
- * This function retrieves details of organizations by their IDs from the db
- *
- * @param {Array<string>} organizationIds - An array of organization IDs to fetch details for.
- * @returns {Promise<object>} - A promise that resolves to an object containing the organization details.
- *
- * @example
- * const organizationIds = ['org1', 'org2'];
- * organizationList(organizationIds)
-
-
- */
-
-const organizationList = function (organizationCodes = [], tenantCodes = []) {
-	return new Promise(async (resolve, reject) => {
-		try {
-			// Try to get cached organizations first
-			const cachedOrgs = []
-			const missingOrgCodes = []
-
-			// Check cache for each org code and tenant code combination
-			for (const orgCode of organizationCodes) {
-				for (const tenantCode of tenantCodes) {
-					let foundInCache = false
-					try {
-						// We need organizationId to get from cache, but we only have orgCode
-						// So we'll fetch from database and cache the results
-						foundInCache = false
-					} catch (cacheError) {
-						foundInCache = false
-					}
-
-					if (!foundInCache) {
-						missingOrgCodes.push({ orgCode, tenantCode })
-					}
-				}
-			}
-
-			// Fetch organization details from database
-			const filter = {
-				organization_code: {
-					[Op.in]: Array.from(organizationCodes),
-				},
-				tenant_code: {
-					[Op.in]: Array.from(tenantCodes),
-				},
-			}
-
-			const organizationDetails = await organisationExtensionQueries.findAll(filter, {
-				attributes: ['name', 'organization_id', 'organization_code', 'tenant_code'],
-			})
-
-			// Cache the fetched organizations for future use
-			if (organizationDetails && organizationDetails.length > 0) {
-				const cachePromises = []
-
-				organizationDetails.forEach((orgInfo) => {
-					orgInfo.id = orgInfo.organization_code
-
-					// Organization caching removed to break circular dependency
-				})
-
-				try {
-					await Promise.all(cachePromises)
-					console.log(`💾 Cached ${organizationDetails.length} organizations from organizationList`)
-				} catch (cacheError) {
-					console.error(`❌ Some organizations failed to cache in organizationList:`, cacheError)
-				}
-			}
-
-			return resolve({
-				responseCode: httpStatusCode.ok,
-				message: 'ORGANIZATION_FETCHED_SUCCESSFULLY',
-				success: true,
-				data: {
-					result: organizationDetails,
-				},
-			})
-		} catch (error) {
-			return reject(error)
-		}
-	})
-}
-
-/**
  * @method getDownloadableUrl
  * @description Retrieves the downloadable URL for a given file path. If the path is already a valid URL, it returns it directly.
  * Otherwise, it constructs a URL to fetch the downloadable link from an external API.
@@ -1126,7 +1039,6 @@ module.exports = {
 	getDownloadableUrl,
 	getUserDetailedList,
 	getUserDetails,
-	organizationList,
 	getOrgDetails,
 	getProfileDetails,
 	getTenantDomain,

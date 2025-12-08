@@ -32,6 +32,7 @@ const { checkIfUserIsAccessible } = require('@helpers/saasUserAccessibility')
 const connectionQueries = require('@database/queries/connection')
 const getOrgIdAndEntityTypes = require('@helpers/getOrgIdAndEntityTypewithEntitiesBasedOnPolicy')
 const searchConfig = require('@root/config.json')
+const getOrganizationHelper = require('@helpers/getOrganizationList')
 
 module.exports = class MenteesHelper {
 	/**
@@ -888,24 +889,39 @@ module.exports = class MenteesHelper {
 				if (sessionIds.length === 0) {
 					return sessions
 				}
+				let missingSessionIds = []
+				let sessionEnrollmentMap = {}
+				for (const sessionId of sessionIds) {
+					let sessionInfo = await cacheHelper.sessions.get(tenantCode, sessionId)
+					if (sessionInfo) {
+						const attendee = sessionInfo?.mentees?.find((m) => String(m.id) === String(userId))
+						sessionEnrollmentMap[sessionId] = attendee
+							? { is_enrolled: true, enrolled_type: attendee.enrolled_type }
+							: { is_enrolled: false }
+					} else {
+						missingSessionIds.push(sessionId)
+					}
+				}
+				if (missingSessionIds.length > 0) {
+					const attendees = await sessionAttendeesQueries.findAll(
+						{
+							session_id: missingSessionIds,
+							mentee_id: userId,
+						},
+						tenantCode
+					)
+					for (const sessionId of missingSessionIds) {
+						const attendee = attendees.find((a) => a.session_id === sessionId)
+						sessionEnrollmentMap[sessionId] = attendee
+							? { is_enrolled: true, enrolled_type: attendee.type }
+							: { is_enrolled: false }
+					}
+				}
 
-				const attendees = await sessionAttendeesQueries.findAll(
-					{
-						session_id: sessionIds,
-						mentee_id: userId,
-					},
-					tenantCode
-				)
-
-				await Promise.all(
-					sessions.map(async (session) => {
-						const attendee = attendees.find((attendee) => attendee.session_id === session.id)
-						if (attendee) session.enrolled_type = attendee.type
-						session.is_enrolled = !!attendee
-					})
-				)
-
-				return sessions
+				return sessions.map((session) => ({
+					...session,
+					...(sessionEnrollmentMap[session.id] || { is_enrolled: false }),
+				}))
 			} else {
 				return sessions
 			}
@@ -929,54 +945,19 @@ module.exports = class MenteesHelper {
 			const mentorIds = [...new Set(sessions.map((session) => session.mentor_id))]
 
 			// Fetch mentor details
-			const mentorDetails = await menteeQueries.getUsersByUserIds(
-				mentorIds,
-				{
-					attributes: ['name', 'user_id', 'organization_id'],
-				},
-				tenantCode,
-				true
-			)
+			const mentorDetails = await userRequests.getUserDetailedListUsingCache(mentorIds, tenantCode, false, false)
 
-			// ✅ FIX 1: Add null check and filter out null organization_ids
-			if (!mentorDetails || mentorDetails.length === 0) {
+			// FIX 1: Add null check and filter out null organization_ids
+			if (!mentorDetails.result || mentorDetails.result.length === 0) {
 				return sessions // Return sessions without mentor details if no mentors found
-			}
-
-			let organizationIds = []
-			mentorDetails.forEach((element) => {
-				// ✅ FIX 2: Only push valid organization_ids
-				if (element && element.organization_id) {
-					organizationIds.push(element.organization_id)
-				}
-			})
-
-			// ✅ FIX 3: Only fetch organizations if we have valid IDs
-			let organizationDetails = []
-			if (organizationIds.length > 0) {
-				organizationDetails = await organisationExtensionQueries.findAll(
-					{
-						organization_id: {
-							[Op.in]: [...organizationIds],
-						},
-					},
-					tenantCode,
-					{
-						attributes: ['name', 'organization_id'],
-					}
-				)
 			}
 
 			// Map mentor names to sessions
 			sessions.forEach((session) => {
-				const mentor = mentorDetails.find((mentorDetail) => mentorDetail.user_id === session.mentor_id)
+				const mentor = mentorDetails.result.find((mentorDetail) => mentorDetail.user_id === session.mentor_id)
 				if (mentor) {
-					const organization = organizationDetails.find(
-						(organizationDetail) => organizationDetail.organization_id === mentor.organization_id
-					)
 					session.mentor_name = mentor.name
-					// ✅ FIX 4: Add null check for organization
-					session.organization = organization ? organization.name : null
+					session.organization = mentor.organization.name
 				}
 			})
 
@@ -1423,6 +1404,7 @@ module.exports = class MenteesHelper {
 
 			let organization_codes = []
 			let tenantCodes = []
+			let organizationInfo = []
 			const organizations = await getOrgIdAndEntityTypes.getOrganizationIdBasedOnPolicy(
 				tokenInformation.id,
 				tokenInformation.organization_code,
@@ -1432,19 +1414,15 @@ module.exports = class MenteesHelper {
 
 			const defaults = await getDefaults()
 
-			if (organizations.success && organizations.result.organizationCodes?.length > 0) {
+			if (organizations && organizations.result.organizationInfo?.length > 0) {
 				organization_codes = organizations.result.organizationCodes
 				tenantCodes = organizations.result.tenantCodes
 
-				let orgCodesWithoutDefaultOrg = organization_codes
-				if (organization_codes.length > 1) {
-					orgCodesWithoutDefaultOrg = organization_codes.filter((orgCode) => orgCode != defaults.orgCode)
+				organizationInfo = organizations.result.organizationInfo
+				if (organizationInfo.length > 1) {
+					organizationInfo = organizationInfo.filter((orgCode) => orgCode != defaults.orgCode)
 				}
-
-				const organizationList = await userRequests.organizationList(orgCodesWithoutDefaultOrg, tenantCodes)
-				if (organizationList.success && organizationList.data?.result?.length > 0) {
-					result.organizations = organizationList.data.result
-				}
+				result.organizations = organizationInfo
 
 				const modelName = []
 
@@ -1638,25 +1616,20 @@ module.exports = class MenteesHelper {
 				})
 			}
 
-			const organizationIds = [...new Set(extensionDetails.data.map((user) => user.organization_id))]
-
-			// Step 2: Query organization table (only if there are IDs to query)
-			let organizationDetails = []
-			if (organizationIds.length > 0) {
-				const orgFilter = {
-					organization_id: {
-						[Op.in]: organizationIds,
-					},
+			const uniqueOrgs = []
+			extensionDetails.data.forEach((item) => {
+				if (!uniqueOrgs.some((o) => o.organization_code === item.organization_code)) {
+					uniqueOrgs.push({
+						organization_id: item.organization_id,
+						organization_code: item.organization_code,
+					})
 				}
-				organizationDetails = await organisationExtensionQueries.findAll(orgFilter, tenantCode, {
-					attributes: ['name', 'organization_id'],
-					raw: true,
-				})
-			}
+			})
 
-			// Step 3: Create a map of organization_id to organization details
+			let orgnisationData = await getOrganizationHelper.organizationListFromCache(uniqueOrgs, tenantCode)
+
 			const orgMap = {}
-			organizationDetails.forEach((org) => {
+			orgnisationData.forEach((org) => {
 				orgMap[org.organization_id] = {
 					id: org.organization_id,
 					name: org.name,
@@ -1721,7 +1694,9 @@ module.exports = class MenteesHelper {
 
 			// Step 6: Handle session enrollment
 			if (queryParams.session_id) {
-				const enrolledMentees = await getEnrolledMentees(queryParams.session_id, {}, tenantCode)
+				const enrolledMentees =
+					(await cacheHelper.sessions.get(tenantCode, queryParams.session_id)) ??
+					(await getEnrolledMentees(queryParams.session_id, {}, tenantCode))
 				extensionDetails.data.forEach((user) => {
 					user.is_enrolled = false
 					const enrolledUser = _.find(enrolledMentees, { id: user.id })

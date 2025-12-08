@@ -903,7 +903,7 @@ exports.getMentorsUpcomingSessionsFromView = async (
 			CASE WHEN sa.id IS NOT NULL THEN true ELSE false END AS is_enrolled,
 			COALESCE(sa.type, NULL) AS enrolment_type
 		FROM
-				${utils.getTenantViewName(tenantCode, Session.tableName)}
+				${utils.getTenantViewName(tenantCode, Session.tableName)} as Sessions
 				LEFT JOIN session_attendees AS sa
 				ON Sessions.id = sa.session_id AND sa.mentee_id = :menteeUserId AND sa.tenant_code = :tenantCode
 		WHERE
@@ -949,7 +949,7 @@ exports.getMentorsUpcomingSessionsFromView = async (
 		const countQuery = `
 		SELECT count(*) AS "count"
 		FROM
-		${utils.getTenantViewName(tenantCode, Session.tableName)}
+		${utils.getTenantViewName(tenantCode, Session.tableName)} as Sessions
 		LEFT JOIN session_attendees AS sa
 				ON Sessions.id = sa.session_id AND sa.mentee_id = :menteeUserId  AND sa.tenant_code = :tenantCode
 		WHERE
