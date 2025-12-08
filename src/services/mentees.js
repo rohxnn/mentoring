@@ -244,7 +244,10 @@ module.exports = class MenteesHelper {
 			delete cacheCopy.image
 			delete cacheCopy.is_connected
 			delete cacheCopy.connection_details
-			delete cacheCopy.meta?.communications
+			if (cacheCopy.meta) {
+				cacheCopy.meta = { ...cacheCopy.meta }
+				delete cacheCopy.meta.communications
+			}
 
 			// // if (mentee.is_mentor) {
 			// 	await cacheHelper.mentor.set(tenantCode, id, finalProfile)
@@ -453,14 +456,30 @@ module.exports = class MenteesHelper {
 	static async joinSession(sessionId, userId, organizationCode, tenantCode) {
 		try {
 			const mentee = await cacheHelper.mentee.get(tenantCode, userId)
-			if (!mentee) throw createUnauthorizedResponse('USER_NOT_FOUND')
+			if (!mentee) {
+				return responses.failureResponse({
+					message: 'USER_NOT_FOUND',
+					statusCode: httpStatusCode.not_found,
+					responseCode: 'CLIENT_ERROR',
+				})
+			}
 
 			// Optimized: Single query with JOIN to get session and attendee data together
-			const sessionWithAttendee = await sessionQueries.findSessionWithAttendee(
-				sessionId,
-				mentee.user_id,
-				tenantCode
-			)
+			let sessionWithAttendee
+			let sessionData = await cacheHelper.sessions.get(tenantCode, sessionId)
+			if (sessionData) {
+				sessionWithAttendee = sessionData.mentees?.find((mentee) => String(mentee.id) === String(userId))
+				sessionWithAttendee.attendee_id = sessionWithAttendee.id
+				sessionWithAttendee.enrolled_type = sessionWithAttendee.type
+				sessionWithAttendee.attendee_meeting_info = sessionWithAttendee.meeting_info ?? sessionData.meeting_info
+			} else {
+				sessionWithAttendee = await sessionQueries.findSessionWithAttendee(
+					sessionId,
+					mentee.user_id,
+					tenantCode
+				)
+				sessionData = { ...sessionWithAttendee }
+			}
 
 			if (!sessionWithAttendee) {
 				return responses.failureResponse({
@@ -470,8 +489,7 @@ module.exports = class MenteesHelper {
 				})
 			}
 
-			const session = sessionWithAttendee
-			const sessionAttendee = sessionWithAttendee.attendee_id
+			const sessionAttendeeExist = sessionWithAttendee.attendee_id
 				? {
 						id: sessionWithAttendee.attendee_id,
 						type: sessionWithAttendee.enrolled_type,
@@ -481,7 +499,7 @@ module.exports = class MenteesHelper {
 				  }
 				: null
 
-			if (session.status == 'COMPLETED') {
+			if (sessionData.status == 'COMPLETED') {
 				return responses.failureResponse({
 					message: 'SESSION_ENDED',
 					statusCode: httpStatusCode.bad_request,
@@ -489,7 +507,7 @@ module.exports = class MenteesHelper {
 				})
 			}
 
-			if (session.status !== 'LIVE') {
+			if (sessionData.status !== 'LIVE') {
 				return responses.failureResponse({
 					message: 'JOIN_ONLY_LIVE_SESSION',
 					statusCode: httpStatusCode.bad_request,
@@ -497,7 +515,7 @@ module.exports = class MenteesHelper {
 				})
 			}
 
-			if (!sessionAttendee) {
+			if (!sessionAttendeeExist) {
 				return responses.failureResponse({
 					message: 'USER_NOT_ENROLLED',
 					statusCode: httpStatusCode.bad_request,
@@ -505,12 +523,12 @@ module.exports = class MenteesHelper {
 				})
 			}
 			let meetingInfo
-			if (session?.meeting_info?.value !== common.BBB_VALUE) {
-				meetingInfo = session.meeting_info
+			if (sessionData?.meeting_info?.value !== common.BBB_VALUE) {
+				meetingInfo = sessionData.meeting_info
 
 				await sessionAttendeesQueries.updateOne(
 					{
-						id: sessionAttendee.id,
+						id: sessionWithAttendee.id,
 					},
 					{
 						meeting_info: meetingInfo,
@@ -524,13 +542,13 @@ module.exports = class MenteesHelper {
 					result: meetingInfo,
 				})
 			}
-			if (sessionAttendee?.meeting_info?.link) {
-				meetingInfo = sessionAttendee.meeting_info
+			if (sessionAttendeeExist?.meeting_info?.link) {
+				meetingInfo = sessionWithAttendee.meeting_info
 			} else {
 				const attendeeLink = await bigBlueButtonService.joinMeetingAsAttendee(
 					sessionId,
 					mentee.name,
-					session.mentee_password
+					sessionData.mentee_password
 				)
 				meetingInfo = {
 					value: common.BBB_VALUE,
@@ -539,7 +557,7 @@ module.exports = class MenteesHelper {
 				}
 				await sessionAttendeesQueries.updateOne(
 					{
-						id: sessionAttendee.id,
+						id: sessionWithAttendee.id,
 					},
 					{
 						meeting_info: meetingInfo,
@@ -767,7 +785,7 @@ module.exports = class MenteesHelper {
 				})
 			}
 
-			const userPolicyDetails = menteeExtension || mentorExtension
+			const userPolicyDetails = menteeExtension
 			let filter = ''
 			if (userPolicyDetails.external_session_visibility && userPolicyDetails.organization_id) {
 				// generate filter based on condition

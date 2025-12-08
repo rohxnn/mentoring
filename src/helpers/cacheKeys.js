@@ -154,7 +154,6 @@ module.exports = {
 	generateSessionKey,
 	generateEntityTypeKey,
 	generateFormKey,
-	generateSessionRequestKey,
 	generateOrganizationKey,
 	generateMentorKey,
 	generateMenteeKey,

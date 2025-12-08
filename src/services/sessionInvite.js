@@ -37,7 +37,7 @@ module.exports = class UserInviteHelper {
 				const defaultTenantCode = data.user.defaultTenantCode
 
 				const mentor = await cacheHelper.mentee.get(tenantCode, userId)
-				if (!mentor) throw createUnauthorizedResponse('USER_NOT_FOUND')
+				if (!mentor) throw new Error('USER_NOT_FOUND')
 
 				const isMentor = mentor.is_mentor
 
@@ -88,25 +88,9 @@ module.exports = class UserInviteHelper {
 				const templateCode = process.env.SESSION_UPLOAD_EMAIL_TEMPLATE_CODE
 				if (templateCode) {
 					const defaults = await getDefaults()
-					if (!defaults.orgCode)
-						return resolve(
-							responses.failureResponse({
-								message: 'DEFAULT_ORG_CODE_NOT_SET',
-								statusCode: httpStatusCode.bad_request,
-								responseCode: 'CLIENT_ERROR',
-							})
-						)
-					if (!defaults.tenantCode)
-						return resolve(
-							responses.failureResponse({
-								message: 'DEFAULT_TENANT_CODE_NOT_SET',
-								statusCode: httpStatusCode.bad_request,
-								responseCode: 'CLIENT_ERROR',
-							})
-						)
+					if (!defaults.orgCode) throw new Error('DEFAULT_ORG_CODE_NOT_SET')
+					if (!defaults.tenantCode) throw new Error('DEFAULT_TENANT_CODE_NOT_SET')
 
-					const orgCodes = [data.user.organization_code, defaults.orgCode]
-					const tenantCodes = [tenantCode, defaults.tenantCode]
 					// send mail to mentors on session creation if session created by manager
 					const templateData = await cacheHelper.notificationTemplates.get(
 						tenantCode,
@@ -580,18 +564,12 @@ module.exports = class UserInviteHelper {
 
 			const defaults = await getDefaults()
 			if (!defaults.orgCode) {
-				return responses.failureResponse({
-					message: 'DEFAULT_ORG_CODE_NOT_SET',
-					statusCode: httpStatusCode.bad_request,
-					responseCode: 'CLIENT_ERROR',
-				})
+				session.status = 'Invalid'
+				session.statusMessage = this.appendWithComma(session.statusMessage, 'DEFAULT_ORG_CODE_NOT_SET')
 			}
 			if (!defaults.tenantCode) {
-				return responses.failureResponse({
-					message: 'DEFAULT_TENANT_CODE_NOT_SET',
-					statusCode: httpStatusCode.bad_request,
-					responseCode: 'CLIENT_ERROR',
-				})
+				session.status = 'Invalid'
+				session.statusMessage = this.appendWithComma(session.statusMessage, 'DEFAULT_TENANT_CODE_NOT_SET')
 			}
 
 			let entityTypes = await entityTypeCache.getEntityTypesAndEntitiesForModel(
@@ -849,22 +827,6 @@ module.exports = class UserInviteHelper {
 
 			const sessionModelName = await sessionQueries.getModelName()
 
-			const defaults = await getDefaults()
-			if (!defaults.orgCode) {
-				return responses.failureResponse({
-					message: 'DEFAULT_ORG_CODE_NOT_SET',
-					statusCode: httpStatusCode.bad_request,
-					responseCode: 'CLIENT_ERROR',
-				})
-			}
-			if (!defaults.tenantCode) {
-				return responses.failureResponse({
-					message: 'DEFAULT_TENANT_CODE_NOT_SET',
-					statusCode: httpStatusCode.bad_request,
-					responseCode: 'CLIENT_ERROR',
-				})
-			}
-
 			let entityTypes = await entityTypeCache.getEntityTypesAndEntitiesForModel(
 				sessionModelName,
 				tenantCode,
@@ -1110,7 +1072,7 @@ module.exports = class UserInviteHelper {
 					false,
 					tenantCode
 				)
-				if (!mentorId) throw createUnauthorizedResponse('USER_NOT_FOUND')
+				if (!mentorId) throw new Error('USER_NOT_FOUND')
 				item.mentor_id = mentorId.email
 			} else {
 				item.mentor_id = item.mentor_id
@@ -1127,7 +1089,7 @@ module.exports = class UserInviteHelper {
 							false,
 							tenantCode
 						)
-						if (!mentee) throw createUnauthorizedResponse('USER_NOT_FOUND')
+						if (!mentee) throw new Error('USER_NOT_FOUND')
 						menteeEmails.push(mentee.email)
 					} else {
 						menteeEmails.push(menteeId)

@@ -22,6 +22,7 @@ const organisationExtensionQueries = require('@database/queries/organisationExte
 // Removed cacheHelper to break circular dependency with getDefaultOrgId
 
 const emailEncryption = require('@utils/emailEncryption')
+const _ = require('lodash')
 
 /**
  * @method fetchOrgDetails
@@ -671,8 +672,7 @@ const listOrganization = function (organizationIds = []) {
 				if (err) {
 					result.success = false
 				} else {
-					response = JSON.parse(data.body)
-					result.data = response
+					result.data = JSON.parse(data.body) ?? data.body
 				}
 				return resolve(result)
 			}
@@ -930,17 +930,17 @@ const getUserDetailedList = function (userIds, tenantCode, deletedUsers = false,
 	})
 }
 
-const getUserDetailedListUsingCache = async function (usersMap, tenantCode, deletedUsers = false, unscopped = false) {
+const getUserDetailedListUsingCache = async function (userIds, tenantCode, deletedUsers = false, unscopped = false) {
 	try {
 		// Empty input short-circuit
-		if (!usersMap || !Array.isArray(usersMap) || usersMap.length === 0) {
+		if (userIds.length === 0) {
 			return { result: [] }
 		}
 
 		let options = deletedUsers ? { paranoid: false } : {}
 
 		// Get user data: cached + missing list
-		const usersInfo = await usersHelper.getMissingUserIdsAndCacheData(usersMap, tenantCode)
+		const usersInfo = await usersHelper.getMissingUserIdsAndCacheData(userIds, tenantCode)
 
 		let userDetails = [...(usersInfo.cacheFoundData || [])]
 
@@ -950,7 +950,7 @@ const getUserDetailedListUsingCache = async function (usersMap, tenantCode, dele
 				usersInfo.missingUserIds,
 				options,
 				tenantCode,
-				true
+				unscopped
 			)
 			userDetails.push(...usersFromDb)
 		}

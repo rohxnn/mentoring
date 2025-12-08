@@ -151,7 +151,7 @@ module.exports = class OrgAdminService {
 				{ [Op.in]: [bodyData.organization_code, defaults.orgCode] },
 				{ [Op.in]: [tenantCode, defaults.tenantCode] },
 				tenantCode,
-				orgCode
+				mentorDetails.organization_code
 			)
 
 			// Invalidate mentor cache after role change (mentor -> mentee)

@@ -66,8 +66,7 @@ module.exports = class issuesHelper {
 				})
 			}
 
-			const tenantCodes = [tenantCode, defaults.tenantCode]
-			const orgCodes = [decodedToken.organization_code, defaults.orgCode]
+			const orgCode = [decodedToken.organization_code]
 
 			// Get email template with cache-first approach and database fallback
 
@@ -75,8 +74,6 @@ module.exports = class issuesHelper {
 				console.log(
 					`🔍 Issues.js - Fetching notification template: ${process.env.REPORT_ISSUE_EMAIL_TEMPLATE_CODE}`
 				)
-				console.log(`🔍 Issues.js - Tenant codes: [${tenantCodes.join(', ')}]`)
-				console.log(`🔍 Issues.js - Org codes: [${orgCodes.join(', ')}]`)
 
 				const templateData = await cacheHelper.notificationTemplates.get(
 					tenantCode,

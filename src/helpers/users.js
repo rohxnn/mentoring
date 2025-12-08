@@ -45,18 +45,15 @@ module.exports = class UserServiceHelper {
 		const cacheFoundData = []
 
 		for (const user of userList) {
-			const userId = user.user_id
-			const orgCode = user.organization_code
-
 			// Check mentees cache, then mentors cache
 			const cachedUser =
-				(await cacheHelper.mentee.getCacheOnly(tenantCode, userId)) ??
-				(await cacheHelper.mentor.getCacheOnly(tenantCode, userId))
+				(await cacheHelper.mentee.getCacheOnly(tenantCode, user)) ??
+				(await cacheHelper.mentor.getCacheOnly(tenantCode, user))
 
 			if (cachedUser) {
 				cacheFoundData.push(cachedUser)
 			} else {
-				missingUserIds.push(userId)
+				missingUserIds.push(user)
 			}
 		}
 

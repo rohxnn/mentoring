@@ -90,19 +90,19 @@ module.exports = class UserHelper {
 					{ user_id: decodedToken.id },
 					decodedToken.tenant_code
 				)
-			}
-			if (!menteeExtension) {
-				return responses.failureResponse({
-					statusCode: httpStatusCode.not_found,
-					message: 'USER_NOT_FOUND',
+				if (!menteeExtension) {
+					return responses.failureResponse({
+						statusCode: httpStatusCode.not_found,
+						message: 'USER_NOT_FOUND',
+					})
+				}
+
+				return responses.successResponse({
+					statusCode: httpStatusCode.ok,
+					message: 'USER_DETAILS_FETCHED_SUCCESSFULLY',
+					result: menteeExtension,
 				})
 			}
-
-			return responses.successResponse({
-				statusCode: httpStatusCode.ok,
-				message: 'USER_DETAILS_FETCHED_SUCCESSFULLY',
-				result: menteeExtension,
-			})
 		} catch (error) {
 			throw error
 		}
@@ -190,7 +190,7 @@ module.exports = class UserHelper {
 
 		const orgExtension = await this.#createOrUpdateOrg(
 			{ id: userDetails.data.result.organization.id, code: userDetails.data.result.organization.code },
-			decodedToken.tenant_code
+			userDetails.data.result.tenant_code
 		)
 
 		if (!orgExtension) {
@@ -202,8 +202,8 @@ module.exports = class UserHelper {
 		}
 		const userExtensionData = this.#getExtensionData(userDetails.data.result, orgExtension)
 		const createOrUpdateResult = isNewUser
-			? await this.#createUser(userExtensionData, decodedToken.tenant_code)
-			: await this.#updateUser(userExtensionData, decodedToken, targetHasMentorRole)
+			? await this.#createUser(userExtensionData, userDetails.data.result.tenant_code)
+			: await this.#updateUser(userExtensionData, userDetails.data.result.tenant_code, targetHasMentorRole)
 		if (createOrUpdateResult.statusCode != httpStatusCode.ok) return createOrUpdateResult
 		else
 			return responses.successResponse({
@@ -315,7 +315,7 @@ module.exports = class UserHelper {
 
 	static #checkOrgChange = (existingOrgId, newOrgId) => existingOrgId !== newOrgId
 
-	static async #updateUser(userExtensionData, decodedToken, targetHasMentorRole) {
+	static async #updateUser(userExtensionData, tenant_code, targetHasMentorRole) {
 		const isAMentee = userExtensionData.roles.some((role) => role.title === common.MENTEE_ROLE)
 		const isAMentor = userExtensionData.roles.some((role) => role.title === common.MENTOR_ROLE)
 		const roleChangePayload = {
@@ -327,7 +327,7 @@ module.exports = class UserHelper {
 		let isRoleChanged = false
 
 		// Skip cache during user updates - role changes require fresh data from database
-		let menteeExtension = await menteeQueries.findOne({ user_id: userExtensionData.id }, decodedToken.tenant_code)
+		let menteeExtension = await menteeQueries.findOne({ user_id: userExtensionData.id }, tenant_code)
 
 		if (!menteeExtension) throw new Error('User Not Found')
 

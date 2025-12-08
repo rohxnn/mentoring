@@ -57,7 +57,6 @@ module.exports = class SessionsHelper {
 	 * @name _clearUserCache
 	 * @param {String|Array} userIds - user ID(s) whose session counts changed
 	 * @param {String} tenantCode - tenant code
-	 * @param {String} orgCode - organization code
 	 * @returns {Promise<void>}
 	 */
 	static async _clearUserCache(userIds, tenantCode) {
@@ -690,7 +689,7 @@ module.exports = class SessionsHelper {
 
 			// Use direct database query instead of cache
 			let mentorExtension =
-				(await cacheHelper.mentor.getCacheOnly(tenantCode, orgCode, userId)) ??
+				(await cacheHelper.mentor.getCacheOnly(tenantCode, userId)) ??
 				(await mentorExtensionQueries.getMentorExtension(userId, [], false, tenantCode))
 			if (!mentorExtension) {
 				return responses.failureResponse({
@@ -3473,7 +3472,7 @@ module.exports = class SessionsHelper {
 			// Enroll mentees
 			const successIds = []
 			const failedIds = []
-			const effectiveMentorId = mentorId ? mentorId : sessionData.mentor_id
+			const effectiveMentorId = mentorId ? mentorId : sessionDetails.mentor_id
 
 			const enrollPromises = mentees.map((menteeData) =>
 				this.enroll(
@@ -3482,7 +3481,7 @@ module.exports = class SessionsHelper {
 					timeZone,
 					menteeData.is_mentor,
 					false,
-					sessionData,
+					sessionDetails,
 					effectiveMentorId, // mentorId
 					organizationCode,
 					tenantCode

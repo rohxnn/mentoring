@@ -28,15 +28,15 @@ exports.getEnrolledMentees = async (sessionId, queryParams, tenantCode) => {
 		}
 
 		let menteeTypeMap = {}
-		const menteesMapData = []
+		const menteeIds = []
 		mentees.forEach((mentee) => {
-			menteesMapData.push({ user_id: mentee.mentee_id })
+			menteeIds.push(mentee.mentee_id)
 			const isDeleted = Boolean(mentee.deleted_at ?? mentee.deletedAt)
 			menteeTypeMap[mentee.mentee_id] = isDeleted ? '' : mentee.type
 		})
 
 		// Fetch missing user details from DB if any
-		let userDetailsResult = await userRequests.getUserDetailedListUsingCache(menteesMapData, tenantCode)
+		let userDetailsResult = await userRequests.getUserDetailedListUsingCache(menteeIds, tenantCode, true, true)
 		let enrolledUsers = userDetailsResult?.result || []
 
 		enrolledUsers.forEach((user) => {

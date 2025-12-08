@@ -303,7 +303,7 @@ function restructureBody(requestBody, entityData, allowedKeys) {
 		if (Object.keys(requestBody.custom_entity_text).length === 0) requestBody.custom_entity_text = null
 		return requestBody
 	} catch (error) {
-		console.log(err)
+		console.log(error)
 	}
 }
 
@@ -643,7 +643,7 @@ function generateCSVContent(data) {
 
 const clearFile = (filePath) => {
 	fs.unlink(filePath, (err) => {
-		if (err) logger.error(err)
+		if (err) console.error(err)
 	})
 }
 function convertKeysToSnakeCase(obj) {
@@ -752,7 +752,9 @@ function filterEntitiesBasedOnParent(data, defaultOrgCode, doNotRemoveDefaultOrg
 
 		let outputArray = data[key]
 		if (countOfEachKey > 1 && countWithParentId == countOfEachKey - 1 && !doNotRemoveDefaultOrg) {
-			outputArray = data[key].filter((obj) => !(obj.organization_code === defaultOrgId && obj.parent_id === null))
+			outputArray = data[key].filter(
+				(obj) => !(obj.organization_code === defaultOrgCode && obj.parent_id === null)
+			)
 		}
 
 		result[key] = outputArray

@@ -270,7 +270,7 @@ module.exports = class MentorExtensionQueries {
 			}
 
 			let projectionClause =
-				'name,email,designation,organization_code,area_of_expertise,education_qualification,custom_entity_text,user_id,rating,mentor_visibility,mentee_visibility,meta'
+				'name,email,designation,organization_code,area_of_expertise,education_qualification,custom_entity_text,user_id,rating,mentor_visibility,mentee_visibility,meta,tenant_code,status,settings,organization_id,phone,is_mentor,rating'
 
 			if (returnOnlyUserId) {
 				projectionClause = 'user_id'

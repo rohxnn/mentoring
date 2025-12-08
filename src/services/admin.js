@@ -35,7 +35,7 @@ class NotificationHelper {
 		orgCode,
 		templateData = {},
 		subjectData = {},
-		tenantCodes,
+		tenantCode,
 	}) {
 		try {
 			if (!templateCode || !recipients?.length) {

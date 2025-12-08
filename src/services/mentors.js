@@ -315,7 +315,7 @@ module.exports = class MentorsHelper {
 			if (session.length > 0) {
 				const userIds = _.uniqBy(session, 'mentor_id').map((item) => item.mentor_id)
 
-				let mentorDetails = await userRequests.getUserDetailedList(userIds, tenantCode)
+				let mentorDetails = await userRequests.getUserDetailedListUsingCache(userIds, tenantCode)
 
 				mentorDetails = mentorDetails.result
 
@@ -1457,57 +1457,24 @@ module.exports = class MentorsHelper {
 			}
 
 			const mentorIds = extensionDetails.data.map((item) => item.user_id)
-			const userDetails = await userRequests.getUserDetailedList(mentorIds, tenantCode)
 
 			//Extract unique organization_codes
 			const organizationCodes = [...new Set(extensionDetails.data.map((user) => user.organization_code))]
 
 			//Query organization table (only if there are codes to query)
-			let organizationDetails = []
+			const orgMap = {}
 			if (organizationCodes.length > 0) {
-				const orgFilter = {
-					organization_code: {
-						[Op.in]: organizationCodes,
-					},
-				}
-				organizationDetails = await organisationExtensionQueries.findAll(orgFilter, tenantCode, {
-					attributes: ['name', 'organization_code', 'organization_id'],
-					raw: true, // Ensure plain objects
-				})
+				for (const orgCode of organizationCodes) {
+					let orgInfo = await cacheHelper.organizations.get(tenantCode, orgCode)
 
-				// Cache the organization details
-				if (organizationDetails && organizationDetails.length > 0) {
-					const cachePromises = organizationDetails
-						.map((org) => {
-							if (org.organization_code && org.organization_id) {
-								return cacheHelper.organizations
-									.set(tenantCode, org.organization_code, org.organization_id, org)
-									.catch((cacheError) => {
-										console.error(
-											`❌ Failed to cache organization ${org.organization_id} in mentor list:`,
-											cacheError
-										)
-									})
-							}
-						})
-						.filter(Boolean)
-
-					Promise.all(cachePromises)
-						.then(() => {})
-						.catch((cacheError) => {
-							console.error(`❌ Some organizations failed to cache in mentor list:`, cacheError)
-						})
+					if (orgInfo && orgInfo.organization_code) {
+						orgMap[orgInfo.organization_code] = {
+							id: orgInfo.organization_code,
+							name: orgInfo.name,
+						}
+					}
 				}
 			}
-
-			//Create a map of organization_code to organization details
-			const orgMap = {}
-			organizationDetails.forEach((org) => {
-				orgMap[org.organization_code] = {
-					id: org.organization_code,
-					name: org.name,
-				}
-			})
 
 			//Attach organization details and decrypt email for each user
 			extensionDetails.data = await Promise.all(
@@ -1534,27 +1501,18 @@ module.exports = class MentorsHelper {
 				)
 			}
 
-			// Create a map from userDetails.result for quick lookups
-			const userDetailsMap = new Map(userDetails.result.map((userDetail) => [userDetail.user_id, userDetail]))
-
 			// Map over extensionDetails.data to merge with the corresponding userDetail
 			extensionDetails.data = extensionDetails.data
 				.map((extensionDetail) => {
-					const user_id = `${extensionDetail.user_id}`
 					const isConnected = connectedMentorIds.has(extensionDetail.user_id)
 
-					if (userDetailsMap.has(user_id)) {
-						let userDetail = userDetailsMap.get(user_id)
-						// Merge userDetail with extensionDetail, prioritize extensionDetail properties
-						userDetail = { ...userDetail, ...extensionDetail, is_connected: isConnected }
-						delete userDetail.user_id
-						delete userDetail.mentor_visibility
-						delete userDetail.mentee_visibility
-						delete userDetail.organization_code
-						delete userDetail.meta
-						return userDetail
-					}
-					return null
+					// Merge userDetail with extensionDetail, prioritize extensionDetail properties
+					let userDetail = { ...extensionDetail, is_connected: isConnected }
+					delete userDetail.user_id
+					delete userDetail.mentor_visibility
+					delete userDetail.mentee_visibility
+					delete userDetail.meta
+					return userDetail
 				})
 				.filter((extensionDetail) => extensionDetail !== null)
 			if (directory) {
@@ -1804,7 +1762,7 @@ module.exports = class MentorsHelper {
 			const userIds = _.uniqBy(sessions, 'mentor_id').map((item) => item.mentor_id)
 
 			// Fetch mentor details from User Service
-			let mentorDetails = await userRequests.getUserDetailedList(userIds, tenantCode)
+			let mentorDetails = await userRequests.getUserDetailedListUsingCache(userIds, tenantCode)
 			mentorDetails = mentorDetails.result
 
 			// Enrich sessions with mentor details

@@ -129,7 +129,7 @@ exports.defaultRulesFilter = async function defaultRulesFilter({
 }) {
 	try {
 		const [userDetails, defaultRules] = await Promise.all([
-			getUserDetails(requesterId, isAMentor(roles), tenantCode),
+			getUserDetailsFromCache(requesterId, isAMentor(roles), tenantCode),
 			defaultRuleQueries.findAll({ type: ruleType, organization_code: requesterOrganizationCode }, tenantCode),
 		])
 
@@ -276,7 +276,7 @@ exports.validateDefaultRulesFilter = async function validateDefaultRulesFilter({
 		}
 
 		if (mentorChecks.length > 0 && data.mentor_id) {
-			const mentorDetails = await getUserDetails(data.mentor_id, true, tenantCode)
+			const mentorDetails = await getUserDetails(data.mentor_id, true, tenant_code)
 
 			for (const { target_field, operator, requesterValue } of mentorChecks) {
 				const targetFieldValue =
