@@ -1459,13 +1459,26 @@ module.exports = class MentorsHelper {
 			const mentorIds = extensionDetails.data.map((item) => item.user_id)
 
 			//Extract unique organization_codes
+			const uniqueOrganizations = [
+				...new Map(
+					extensionDetails.data.map((item) => [
+						item.organization_code,
+						{ organization_id: item.organization_id, organization_code: item.organization_code },
+					])
+				).values(),
+			]
+
 			const organizationCodes = [...new Set(extensionDetails.data.map((user) => user.organization_code))]
 
 			//Query organization table (only if there are codes to query)
 			const orgMap = {}
-			if (organizationCodes.length > 0) {
-				for (const orgCode of organizationCodes) {
-					let orgInfo = await cacheHelper.organizations.get(tenantCode, orgCode)
+			if (uniqueOrganizations.length > 0) {
+				for (const orgData of uniqueOrganizations) {
+					let orgInfo = await cacheHelper.organizations.get(
+						tenantCode,
+						orgData.organization_code,
+						orgData.organization_id
+					)
 
 					if (orgInfo && orgInfo.organization_code) {
 						orgMap[orgInfo.organization_code] = {

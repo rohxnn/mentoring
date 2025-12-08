@@ -250,11 +250,7 @@ module.exports = class MenteesHelper {
 				delete cacheCopy.meta.communications
 			}
 
-			// // if (mentee.is_mentor) {
-			// 	await cacheHelper.mentor.set(tenantCode, id, finalProfile)
-			// } else {
-			await cacheHelper.mentee.set(tenantCode, id, finalProfile)
-			// }
+			await cacheHelper.mentee.set(tenantCode, id, cacheCopy)
 		} catch (cacheError) {
 			console.error(`❌ Failed to cache mentee profile ${id}:`, cacheError)
 		}
