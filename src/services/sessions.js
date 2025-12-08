@@ -2277,8 +2277,8 @@ module.exports = class SessionsHelper {
 			// Else it will be available in userTokenData
 			if (isSelfUnenrollment) {
 				const userDetails =
-					(await cacheHelper.mentee.getCacheOnly(tenantCode, orgCode, userId)) ??
-					(await cacheHelper.mentor.getCacheOnly(tenantCode, orgCode, userId)) ??
+					(await cacheHelper.mentee.getCacheOnly(tenantCode, userId)) ??
+					(await cacheHelper.mentor.getCacheOnly(tenantCode, userId)) ??
 					(await mentorExtensionQueries.getMentorExtension(
 						userId,
 						['user_id', 'name', 'email'],
@@ -2312,7 +2312,7 @@ module.exports = class SessionsHelper {
 			if (mentorId || session.mentor_id) {
 				let mentor_id = mentorId ?? session.mentor_id
 				const mentorDetails =
-					(await cacheHelper.mentor.getCacheOnly(tenantCode, orgCode, mentor_id)) ??
+					(await cacheHelper.mentor.getCacheOnly(tenantCode, mentor_id)) ??
 					(await mentorExtensionQueries.getMentorExtension(mentor_id, ['name'], true, tenantCode))
 				session.mentor_name = mentorDetails.name
 			} else {

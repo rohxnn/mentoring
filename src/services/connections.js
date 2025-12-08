@@ -125,7 +125,7 @@ module.exports = class ConnectionHelper {
 			const userExtensionsModelName = await userExtensionQueries.getModelName()
 
 			// Use getCacheOnly first, then fallback to database query if cache miss
-			let userDetails = await cacheHelper.mentee.getCacheOnly(tenantCode, defaults.orgCode, friendId)
+			let userDetails = await cacheHelper.mentee.getCacheOnly(tenantCode, friendId)
 
 			if (!userDetails) {
 				userDetails = await userExtensionQueries.getMenteeExtension(

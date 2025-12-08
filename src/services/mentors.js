@@ -1153,7 +1153,7 @@ module.exports = class MentorsHelper {
 		const queryFunction = isAMentor ? mentorQueries.getMentorExtension : menteeQueries.getMenteeExtension
 
 		// Try cache first
-		let userPolicyDetails = await cacheHelper[cacheKey].getCacheOnly(tenantCode, orgCode, userId)
+		let userPolicyDetails = await cacheHelper[cacheKey].getCacheOnly(tenantCode, userId)
 
 		// Fallback to database query if cache miss
 		if (!userPolicyDetails) {
