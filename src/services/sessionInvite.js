@@ -626,11 +626,40 @@ module.exports = class UserInviteHelper {
 				entities: item.entities,
 				org_Id: item.organization_id,
 			}))
+
+			console.log(`🎯 [SESSION VALIDATION] Starting validation for session: ${session.title}`)
+			console.log(`📋 [AVAILABLE ENTITIES] Found ${idAndValues.length} entity types for validation:`)
+			idAndValues.forEach((item, index) => {
+				console.log(`   - [${index}] EntityType: "${item.value}" has ${item.entities?.length || 0} entities`)
+				if (item.entities && item.entities.length > 0) {
+					console.log(`     - Entities: ${item.entities.map((e) => e.value).join(', ')}`)
+				}
+			})
+
 			await this.mapSessionToEntityValues(session, idAndValues)
 
+			console.log(`📊 [SESSION DATA] Session after mapping:`)
+			console.log(`   - title: ${session.title}`)
+			console.log(`   - custom_entities:`, JSON.stringify(session.custom_entities, null, 2))
+			console.log(`   - Has custom_entities: ${!!session.custom_entities}`)
+
 			if (session.custom_entities) {
+				const customEntityKeys = Object.keys(session.custom_entities)
+				console.log(`🔍 [VALIDATION CHECK] Session has ${customEntityKeys.length} custom entity fields:`)
+				customEntityKeys.forEach((key) => {
+					const values = session.custom_entities[key]
+					console.log(`   - "${key}": [${Array.isArray(values) ? values.join(', ') : values}]`)
+				})
+
+				const availableEntityTypes = idAndValues.map((item) => item.value)
+				console.log(`🎯 [ENTITY COMPARISON] Available entity types: [${availableEntityTypes.join(', ')}]`)
+
 				const result = await this.validateCustomEntities(session, idAndValues, userId)
+				console.log(
+					`✅ [VALIDATION RESULT] Custom entities validation: ${result.isValid ? 'PASSED' : 'FAILED'}`
+				)
 				if (!result.isValid) {
+					console.log(`❌ [VALIDATION ERROR] Message: ${result.message}`)
 					session.status = 'Invalid'
 					session.statusMessage = this.appendWithComma(session.statusMessage, result.message)
 				} else {
