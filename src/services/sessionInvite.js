@@ -298,8 +298,20 @@ module.exports = class UserInviteHelper {
 					parsedRow.custom_entities = customEntities
 				}
 
+				console.log(`🗂️  [CSV ROW PARSED] Row data for session: ${title}`)
+				console.log(`   - action: ${action}`)
+				console.log(`   - title: ${title}`)
+				console.log(`   - description: ${description}`)
+				console.log(`   - mentor_id: ${mentor_id}`)
+				console.log(`   - date: ${date}`)
+				console.log(`   - time_zone: ${time_zone}`)
+				console.log(`   - time24hrs: ${time24hrs}`)
+				console.log(`   - duration: ${duration}`)
+				console.log(`   - meeting_info: ${JSON.stringify(meetingInfo)}`)
+				console.log(`   - type: ${type}`)
+				console.log(`   - Full parsedRow:`, JSON.stringify(parsedRow, null, 2))
+
 				parsedCSVData.push(parsedRow)
-				parsedCSVData
 
 				if (action.toUpperCase() !== common.DELETE_METHOD) {
 					const platformNameRegex = common.PLATFORMS_REGEX
@@ -355,6 +367,9 @@ module.exports = class UserInviteHelper {
 					}
 					//BBB Validation
 					const validateBBB = async () => {
+						console.log(`🟦 [BBB VALIDATION] Starting BBB validation`)
+						console.log(`   - meetingLinkOrId: "${meetingLinkOrId}"`)
+						console.log(`   - !meetingLinkOrId: ${!meetingLinkOrId}`)
 						if (!meetingLinkOrId) {
 							if (process.env.DEFAULT_MEETING_SERVICE === common.BBB_VALUE) {
 								setMeetingInfo(common.MEETING_VALUES.BBB_LABEL, common.BBB_VALUE)
@@ -365,7 +380,9 @@ module.exports = class UserInviteHelper {
 									'Set Meeting Later'
 								)
 							}
+							console.log(`✅ [BBB SUCCESS] BBB validation passed - no link provided`)
 						} else {
+							console.log(`❌ [BBB FAIL] BBB validation failed - link provided when none expected`)
 							lastEntry.status = 'Invalid'
 							lastEntry.statusMessage = await processInvalidLink(
 								lastEntry.statusMessage,
@@ -400,7 +417,14 @@ module.exports = class UserInviteHelper {
 						)
 					}
 					//Validating logic using switch case
+					console.log(`🔗 [MEETING VALIDATION] Starting meeting validation for session: ${title}`)
+					console.log(`   - meetingPlatform: "${meetingPlatform}"`)
+					console.log(`   - meetingName: "${meetingName}"`)
+					console.log(`   - meetingLinkOrId: "${meetingLinkOrId}"`)
+					console.log(`   - meetingPasscode: "${meetingPasscode}"`)
+
 					const validateMeetingLink = async () => {
+						console.log(`🔍 [MEETING SWITCH] Checking validation conditions...`)
 						switch (true) {
 							case meetingName.includes(common.MEETING_VALUES.ZOOM_VALUE):
 								await validateZoom()
@@ -412,6 +436,7 @@ module.exports = class UserInviteHelper {
 								await validateGoogleMeet()
 								break
 							case common.MEETING_VALUES.BBB_PLATFORM_VALUES.some((value) => meetingName.includes(value)):
+								console.log(`✅ [BBB MATCH] Platform matched BBB validation`)
 								await validateBBB()
 								break
 							case !meetingLinkOrId && !meetingName:
@@ -452,6 +477,16 @@ module.exports = class UserInviteHelper {
 	}
 
 	static async processSession(session, userId, orgCode, validRowsCount, invalidRowsCount, tenantCode) {
+		console.log(`🔍 [PROCESS SESSION] Starting validation for session:`)
+		console.log(`   - Session ID/Title: ${session.id || session.title || 'Unknown'}`)
+		console.log(`   - Session object keys: [${Object.keys(session).join(', ')}]`)
+		console.log(`   - Session.action: ${session.action}`)
+		console.log(`   - Session.title: ${session.title}`)
+		console.log(`   - Session.mentor_id: ${session.mentor_id}`)
+		console.log(`   - Session.date: ${session.date}`)
+		console.log(`   - Session.duration: ${session.duration}`)
+		console.log(`   - Full session object:`, JSON.stringify(session, null, 2))
+
 		const requiredFields = [
 			'action',
 			'title',
@@ -471,6 +506,14 @@ module.exports = class UserInviteHelper {
 		const missingFields = requiredFields.filter(
 			(field) => !session[field] || (Array.isArray(session[field]) && session[field].length === 0)
 		)
+		console.log(`📋 [FIELD VALIDATION] Required fields check:`)
+		console.log(`   - Required fields: [${requiredFields.join(', ')}]`)
+		console.log(`   - Missing fields: [${missingFields.join(', ')}]`)
+		console.log(`   - Field values:`)
+		requiredFields.forEach((field) => {
+			console.log(`     * ${field}: ${JSON.stringify(session[field])}`)
+		})
+
 		if (missingFields.length > 0) {
 			session.status = 'Invalid'
 			session.statusMessage = this.appendWithComma(
