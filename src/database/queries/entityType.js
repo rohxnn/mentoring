@@ -59,10 +59,26 @@ module.exports = class UserEntityData {
 				tenant_code: Array.isArray(tenantCodes) ? { [Op.in]: tenantCodes } : tenantCodes,
 			}
 
+			console.log(`🗃️  [DB QUERY] EntityTypes.findAll with whereClause:`)
+			console.log(`   - whereClause:`, JSON.stringify(whereClause, null, 2))
+			console.log(`   - tenantCodes:`, tenantCodes)
+
 			const entityTypes = await EntityType.findAll({
 				where: whereClause,
 				raw: true,
 			})
+
+			console.log(`📋 [DB RESULT] EntityTypes query returned ${entityTypes.length} records`)
+			if (entityTypes.length > 0) {
+				console.log(
+					`   - EntityType IDs found:`,
+					entityTypes.map((et) => et.id)
+				)
+				console.log(
+					`   - EntityType values:`,
+					entityTypes.map((et) => `${et.value} (org:${et.organization_code}, tenant:${et.tenant_code})`)
+				)
+			}
 
 			const entityTypeIds = entityTypes.map((entityType) => entityType.id).filter((id) => id != null)
 
@@ -74,10 +90,28 @@ module.exports = class UserEntityData {
 					tenant_code: tenantCodes,
 				}
 
+				console.log(`🗃️  [DB QUERY] Entities.findAll with entityFilter:`)
+				console.log(`   - entityFilter:`, JSON.stringify(entityFilter, null, 2))
+				console.log(`   - entityTypeIds:`, entityTypeIds)
+
 				entities = await Entity.findAll({
 					where: entityFilter,
 					raw: true,
 				})
+
+				console.log(`📋 [DB RESULT] Entities query returned ${entities.length} records`)
+				if (entities.length > 0) {
+					console.log(
+						`   - Entity IDs found:`,
+						entities.map((e) => e.id)
+					)
+					console.log(
+						`   - Entity values:`,
+						entities.map((e) => `${e.value} (type_id:${e.entity_type_id}, tenant:${e.tenant_code})`)
+					)
+				}
+			} else {
+				console.log(`⚠️  [DB INFO] No EntityType IDs found, skipping Entities query`)
 			}
 
 			const result = entityTypes.map((entityType) => {
@@ -86,6 +120,11 @@ module.exports = class UserEntityData {
 					...entityType,
 					entities: matchingEntities,
 				}
+			})
+
+			console.log(`🔄 [DB FINAL] Combined result has ${result.length} EntityTypes with their Entities`)
+			result.forEach((et, index) => {
+				console.log(`   - [${index}] EntityType: ${et.value} has ${et.entities.length} entities`)
 			})
 
 			return result

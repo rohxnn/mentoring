@@ -131,7 +131,23 @@ async function getEntityTypesAndEntitiesWithCache(originalFilter, tenantCode, or
 				...originalFilter,
 				organization_code: orgCode,
 			}
+
+			console.log(`🔍 [ENTITY QUERY 1] USER CODES - Searching with filter:`)
+			console.log(`   - tenantCode: ${tenantCode}`)
+			console.log(`   - orgCode: ${orgCode}`)
+			console.log(`   - userFilter:`, JSON.stringify(userFilter, null, 2))
+
 			dbResult = await entityTypeQueries.findUserEntityTypesAndEntities(userFilter, [tenantCode])
+
+			console.log(`📊 [ENTITY RESULT 1] USER CODES - Found ${dbResult ? dbResult.length : 0} entity types`)
+			if (dbResult && dbResult.length > 0) {
+				console.log(
+					`   - Entity types found:`,
+					dbResult.map((et) => `${et.value}:${et.model_names}`)
+				)
+			} else {
+				console.log(`   - No entity types found for user tenant/org`)
+			}
 
 			// If not found with user codes and defaults exist, try with default codes
 			if (
@@ -149,7 +165,29 @@ async function getEntityTypesAndEntitiesWithCache(originalFilter, tenantCode, or
 					...originalFilter,
 					organization_code: defaults.orgCode,
 				}
+
+				console.log(`🔍 [ENTITY QUERY 2] DEFAULT CODES - Searching with filter:`)
+				console.log(`   - defaults.tenantCode: ${defaults.tenantCode}`)
+				console.log(`   - defaults.orgCode: ${defaults.orgCode}`)
+				console.log(`   - defaultFilter:`, JSON.stringify(defaultFilter, null, 2))
+
 				dbResult = await entityTypeQueries.findUserEntityTypesAndEntities(defaultFilter, [defaults.tenantCode])
+
+				console.log(`📊 [ENTITY RESULT 2] DEFAULT CODES - Found ${dbResult ? dbResult.length : 0} entity types`)
+				if (dbResult && dbResult.length > 0) {
+					console.log(
+						`   - Entity types found:`,
+						dbResult.map((et) => `${et.value}:${et.model_names}`)
+					)
+				} else {
+					console.log(`   - No entity types found for default tenant/org either`)
+				}
+			} else if (!defaults || !defaults.orgCode || !defaults.tenantCode) {
+				console.log(
+					`⚠️  [ENTITY WARNING] Defaults not available - orgCode: ${defaults?.orgCode}, tenantCode: ${defaults?.tenantCode}`
+				)
+			} else if (defaults.tenantCode === tenantCode && defaults.orgCode === orgCode) {
+				console.log(`ℹ️  [ENTITY INFO] User codes same as defaults, skipping default query`)
 			}
 		} catch (dbError) {
 			console.error(`Failed to fetch entity types from database:`, dbError.message)
@@ -209,6 +247,12 @@ async function getEntityTypesAndEntitiesForModel(modelName, tenantCode, orgCode,
 			orgCode: process.env.DEFAULT_ORGANISATION_CODE,
 			tenantCode: process.env.DEFAULT_TENANT_CODE,
 		}
+
+		console.log(`🔍 [ENTITY TYPE LOOKUP] getEntityTypesAndEntitiesForModel called`)
+		console.log(`   - modelName: ${modelName}`)
+		console.log(`   - tenantCode: ${tenantCode}`)
+		console.log(`   - orgCode: ${orgCode}`)
+		console.log(`   - additionalFilters:`, JSON.stringify(additionalFilters, null, 2))
 
 		if (!defaults || !defaults.orgCode || !defaults.tenantCode) {
 			return responses.failureResponse({
@@ -336,6 +380,23 @@ async function getEntityTypesAndEntitiesForModel(modelName, tenantCode, orgCode,
 					}
 				}
 				return true
+			})
+		}
+
+		console.log(`📊 [ENTITY TYPE FINAL SUMMARY] For model "${modelName}":`)
+		console.log(`   - Total found: ${filteredEntityTypes.length} entity types`)
+		console.log(`   - User context: tenant=${tenantCode}, org=${orgCode}`)
+		console.log(`   - Default context: tenant=${defaults.tenantCode}, org=${defaults.orgCode}`)
+
+		if (filteredEntityTypes.length === 0) {
+			console.log(`❌ [CRITICAL] NO ENTITY TYPES FOUND - This will cause validation failures!`)
+			console.log(`💡 [SOLUTION] You need to create entity types for model "${modelName}" in database`)
+			console.log(`   Either for: tenant="${tenantCode}" + org="${orgCode}"`)
+			console.log(`   Or for defaults: tenant="${defaults.tenantCode}" + org="${defaults.orgCode}"`)
+		} else {
+			console.log(`✅ [SUCCESS] Entity types available for validation:`)
+			filteredEntityTypes.forEach((et, index) => {
+				console.log(`   - [${index}] ${et.value} (org:${et.organization_code}, tenant:${et.tenant_code})`)
 			})
 		}
 

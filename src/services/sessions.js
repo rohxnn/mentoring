@@ -276,16 +276,81 @@ module.exports = class SessionsHelper {
 				})
 
 			const sessionModelName = await sessionQueries.getModelName()
+
+			console.log(`🔍 [ENTITY VALIDATION] Starting validation for model: ${sessionModelName}`)
+			console.log(`   - Session data keys:`, Object.keys(bodyData))
+			console.log(`   - User context: tenant=${tenantCode}, org=${orgCode}`)
+			console.log(`   - Defaults: tenant=${defaults.tenantCode}, org=${defaults.orgCode}`)
+
+			// Show commonly expected entity types for sessions
+			console.log(`🎯 [EXPECTED ENTITY TYPES] For sessions, typically need these entity types:`)
+			console.log(`   - Session:Session (for session validation)`)
+			console.log(`   - MentorExtension:designation (for mentor validation)`)
+			console.log(`   - MentorExtension:area_of_expertise (for mentor skills)`)
+			console.log(`   - UserExtension:medium (for language preferences)`)
+			console.log(`   - UserExtension:category (for user categories)`)
+			console.log(`   - UserExtension:block (for location validation)`)
+			console.log(`   - UserExtension:district (for location validation)`)
+			console.log(`   - UserExtension:state (for location validation)`)
+
 			const entityTypes = await entityTypeCache.getEntityTypesAndEntitiesForModel(
 				sessionModelName,
 				tenantCode,
 				orgCode
 			)
 
+			console.log(`📋 [ENTITY TYPES RAW] Found ${entityTypes.length} raw entity types from cache:`)
+			entityTypes.forEach((et, index) => {
+				console.log(
+					`   - [${index}] ${et.value} (org:${et.organization_code}, tenant:${et.tenant_code}) - ${
+						et.entities?.length || 0
+					} entities`
+				)
+				if (et.entities && et.entities.length > 0) {
+					console.log(`     - Entities: ${et.entities.map((e) => e.value).join(', ')}`)
+				}
+			})
+
 			//validationData = utils.removeParentEntityTypes(JSON.parse(JSON.stringify(validationData)))
 			const validationData = removeDefaultOrgEntityTypes(entityTypes, defaults.orgCode)
+
+			console.log(
+				`🔧 [ENTITY TYPES PROCESSED] After removeDefaultOrgEntityTypes: ${validationData.length} entity types`
+			)
+			validationData.forEach((et, index) => {
+				console.log(
+					`   - [${index}] ${et.value} (org:${et.organization_code}, tenant:${et.tenant_code}) - ${
+						et.entities?.length || 0
+					} entities`
+				)
+				if (et.entities && et.entities.length > 0) {
+					console.log(`     - Entities: ${et.entities.map((e) => e.value).join(', ')}`)
+				}
+			})
+
+			// Check what entity types are needed for session validation
+			const sessionFields = Object.keys(bodyData)
+			console.log(`🎯 [VALIDATION NEEDED] Session has these fields that might need validation:`)
+			sessionFields.forEach((field) => {
+				const value = bodyData[field]
+				if (value && typeof value === 'string') {
+					console.log(`   - ${field}: "${value}"`)
+				}
+			})
+
 			bodyData.status = common.PUBLISHED_STATUS
 			let res = utils.validateInput(bodyData, validationData, sessionModelName, skipValidation)
+
+			console.log(`✅ [VALIDATION RESULT] Validation ${res.success ? 'PASSED' : 'FAILED'}`)
+			if (!res.success && res.errors) {
+				console.log(`❌ [VALIDATION ERRORS]:`, JSON.stringify(res.errors, null, 2))
+				console.log(`💡 [MISSING ENTITY TYPES] These validation failures suggest missing entity types:`)
+				res.errors.forEach((error) => {
+					if (error.includes('is not a valid option') || error.includes('not found')) {
+						console.log(`   - Error: ${error}`)
+					}
+				})
+			}
 			if (!res.success) {
 				return responses.failureResponse({
 					message: 'SESSION_CREATION_FAILED',
