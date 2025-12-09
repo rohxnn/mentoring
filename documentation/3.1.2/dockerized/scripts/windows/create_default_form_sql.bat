@@ -5,7 +5,7 @@ setlocal
 set "SCRIPT_DIR=%~dp0"
 
 :: Define the GitHub raw URL for the JSON file
-set "GITHUB_REPO=https://raw.githubusercontent.com/ELEVATE-Project/mentoring-mobile-app/refs/heads/release-3.1.1/forms.json"
+set "GITHUB_REPO=https://raw.githubusercontent.com/ELEVATE-Project/mentoring-mobile-app/refs/heads/release-3.1.2/forms.json"
 set "JSON_FILE=%SCRIPT_DIR%forms.json"
 
 :: Set organization_id
