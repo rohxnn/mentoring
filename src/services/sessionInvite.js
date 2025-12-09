@@ -48,6 +48,8 @@ module.exports = class UserInviteHelper {
 					throw createUnauthorizedResponse('USER_NOT_FOUND')
 				}
 				console.log(`✅ [USER FOUND] User: ${mentor.name}, Is Mentor: ${mentor.is_mentor}`)
+				console.log(`📧 [EMAIL CHECK] mentor.email: ${mentor.email}`)
+				console.log(`📋 [USER KEYS] mentor object keys: [${Object.keys(mentor).join(', ')}]`)
 
 				const isMentor = mentor.is_mentor
 
@@ -86,22 +88,40 @@ module.exports = class UserInviteHelper {
 				)
 				console.log(`🏁 [PROCESSING COMPLETE] Session processing finished. Success: ${createResponse.success}`)
 				if (createResponse.success == false) console.log(':::::::::', createResponse.message)
+				console.log(`📊 [PROCESSING RESULT] Full createResponse:`, JSON.stringify(createResponse, null, 2))
+				console.log(
+					`📊 [ERROR CHECK] createResponse.result.isErrorOccured: ${createResponse.result?.isErrorOccured}`
+				)
 				const outputFilename = path.basename(createResponse.result.outputFilePath)
+				console.log(`📤 [CLOUD UPLOAD START] Uploading file: ${outputFilename} to cloud`)
 				// upload output file to cloud
 				const uploadRes = await uploadToCloud.uploadFileToCloud(outputFilename, inviteeFileDir, userId, orgId)
 				const output_path = uploadRes.result.uploadDest
+				console.log(`✅ [CLOUD UPLOAD SUCCESS] File uploaded to: ${output_path}`)
+
+				const newStatus =
+					createResponse.result.isErrorOccured == true ? common.STATUS.FAILED : common.STATUS.PROCESSED
 				const update = {
 					output_path,
 					updated_by: userId,
-					status:
-						createResponse.result.isErrorOccured == true ? common.STATUS.FAILED : common.STATUS.PROCESSED,
+					status: newStatus,
 				}
+				console.log(`🔄 [FILE UPDATE START] Updating file_uploads record:`)
+				console.log(`   - File ID: ${data.fileDetails.id}`)
+				console.log(`   - Organization ID: ${orgId}`)
+				console.log(`   - Tenant Code: ${tenantCode}`)
+				console.log(`   - New Status: ${newStatus}`)
+				console.log(`   - Output Path: ${output_path}`)
+				console.log(`   - Updated By: ${userId}`)
+				console.log(`   - Full Update Object:`, JSON.stringify(update, null, 2))
+
 				//update output path in file uploads
 				const rowsAffected = await fileUploadQueries.update(
 					{ id: data.fileDetails.id, organization_id: orgId },
 					tenantCode,
 					update
 				)
+				console.log(`📝 [FILE UPDATE RESULT] Rows affected: ${rowsAffected}`)
 				if (rowsAffected === 0) {
 					throw new Error('FILE_UPLOAD_MODIFY_ERROR')
 				}
@@ -138,7 +158,7 @@ module.exports = class UserInviteHelper {
 
 					if (templateData) {
 						const sessionUploadURL = await utils.getDownloadableUrl(output_path)
-						await this.sendSessionManagerEmail(templateData, data.user, sessionUploadURL) //Rename this to function to generic name since this function is used for both Invitee & Org-admin.
+						await this.sendSessionManagerEmail(templateData, mentor, sessionUploadURL) //Rename this to function to generic name since this function is used for both Invitee & Org-admin.
 					}
 				}
 
@@ -1111,6 +1131,14 @@ module.exports = class UserInviteHelper {
 			const outputFilePath = path.join(sessionFileDir, outputFileName)
 			fs.writeFileSync(outputFilePath, csvContent)
 
+			// Check if any sessions failed processing
+			const hasErrors = sessionCreationOutput.some((session) => session.status === 'Invalid')
+			console.log(`🔍 [ERROR ANALYSIS] Checking for processing errors:`)
+			console.log(`   - Total sessions processed: ${sessionCreationOutput.length}`)
+			console.log(`   - Valid sessions: ${validRowsCount}`)
+			console.log(`   - Invalid sessions: ${invalidRowsCount}`)
+			console.log(`   - Has errors: ${hasErrors}`)
+
 			return {
 				success: true,
 				result: {
@@ -1118,6 +1146,7 @@ module.exports = class UserInviteHelper {
 					outputFilePath,
 					validRowsCount,
 					invalidRowsCount,
+					isErrorOccured: hasErrors,
 				},
 			}
 		} catch (error) {
@@ -1299,6 +1328,12 @@ module.exports = class UserInviteHelper {
 
 	static async sendSessionManagerEmail(templateData, userData, sessionUploadURL = null, subjectComposeData = {}) {
 		try {
+			console.log(`📧 [EMAIL DEBUG] sendSessionManagerEmail called with userData:`)
+			console.log(`   - userData.email: ${userData.email}`)
+			console.log(`   - userData.name: ${userData.name}`)
+			console.log(`   - userData keys: [${Object.keys(userData).join(', ')}]`)
+			console.log(`   - Full userData:`, JSON.stringify(userData, null, 2))
+
 			const payload = {
 				type: common.notificationEmailType,
 				email: {

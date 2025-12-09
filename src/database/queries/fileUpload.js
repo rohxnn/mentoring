@@ -39,17 +39,28 @@ exports.update = async (filter, tenantCode, update, options = {}) => {
 		// Safe merge: tenant filtering cannot be overridden by options.where
 		const { where: optionsWhere, ...otherOptions } = options
 
+		const whereClause = {
+			...optionsWhere, // Allow additional where conditions
+			...filter, // But tenant filtering takes priority
+		}
+
+		console.log(`🔍 [FILE UPLOAD UPDATE] Query details:`)
+		console.log(`   - Filter (before tenant):`, JSON.stringify(filter, null, 2))
+		console.log(`   - Tenant Code: ${tenantCode}`)
+		console.log(`   - Update Data:`, JSON.stringify(update, null, 2))
+		console.log(`   - Where Clause:`, JSON.stringify(whereClause, null, 2))
+		console.log(`   - Options:`, JSON.stringify(otherOptions, null, 2))
+
 		const [res] = await FileUpload.update(update, {
-			where: {
-				...optionsWhere, // Allow additional where conditions
-				...filter, // But tenant filtering takes priority
-			},
+			where: whereClause,
 			...otherOptions,
 			individualHooks: true,
 		})
 
+		console.log(`📝 [FILE UPLOAD UPDATE RESULT] Rows updated: ${res}`)
 		return res
 	} catch (error) {
+		console.log(`❌ [FILE UPLOAD UPDATE ERROR]`, error)
 		return error
 	}
 }
