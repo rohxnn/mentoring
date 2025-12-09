@@ -200,9 +200,9 @@ module.exports = class UserInviteHelper {
 		}
 	}
 
-	static async appendWithComma(existingMessagePromise, newMessage) {
-		const existingMessage = await existingMessagePromise
-		if (existingMessage) {
+	static appendWithComma(existingMessage, newMessage) {
+		// Handle both string and Promise inputs
+		if (existingMessage && typeof existingMessage === 'string') {
 			return `${existingMessage}, ${newMessage}`
 		} else {
 			return newMessage
@@ -321,11 +321,10 @@ module.exports = class UserInviteHelper {
 					const setMeetingInfo = (label, value, meta = {}, link) => {
 						lastEntry.meeting_info = { platform: label, value: value, meta: meta, link: meetingLinkOrId }
 					}
-					const processStatusMessage = async (statusMessage, message) => {
+					const processStatusMessage = (statusMessage, message) => {
 						return statusMessage ? `${statusMessage}, ${message}` : message
 					}
-					const processInvalidLink = async (statusMessage, message) =>
-						await processStatusMessage(statusMessage, message)
+					const processInvalidLink = (statusMessage, message) => processStatusMessage(statusMessage, message)
 					//Zoom Validation
 					const validateZoom = async () => {
 						const match = meetingLinkOrId.match(zoomMeetingRegex)
@@ -338,7 +337,7 @@ module.exports = class UserInviteHelper {
 							})
 						} else {
 							lastEntry.status = 'Invalid'
-							lastEntry.statusMessage = await processInvalidLink(lastEntry.statusMessage, 'Invalid Link')
+							lastEntry.statusMessage = processInvalidLink(lastEntry.statusMessage, 'Invalid Link')
 						}
 					}
 					//WhatsApp Validation
@@ -350,7 +349,7 @@ module.exports = class UserInviteHelper {
 							setMeetingInfo(common.MEETING_VALUES.WHATSAPP_LABEL, common.MEETING_VALUES.WHATSAPP_LABEL)
 						} else {
 							lastEntry.status = 'Invalid'
-							lastEntry.statusMessage = await processInvalidLink(lastEntry.statusMessage, 'Invalid Link')
+							lastEntry.statusMessage = processInvalidLink(lastEntry.statusMessage, 'Invalid Link')
 						}
 					}
 					//GoogleMeet Validation
@@ -362,7 +361,7 @@ module.exports = class UserInviteHelper {
 							setMeetingInfo(common.MEETING_VALUES.GOOGLE_LABEL, common.MEETING_VALUES.GOOGLE_VALUE)
 						} else {
 							lastEntry.status = 'Invalid'
-							lastEntry.statusMessage = await processInvalidLink(lastEntry.statusMessage, 'Invalid Link')
+							lastEntry.statusMessage = processInvalidLink(lastEntry.statusMessage, 'Invalid Link')
 						}
 					}
 					//BBB Validation
@@ -375,7 +374,7 @@ module.exports = class UserInviteHelper {
 								setMeetingInfo(common.MEETING_VALUES.BBB_LABEL, common.BBB_VALUE)
 							} else {
 								setMeetingInfo(process.env.DEFAULT_MEETING_SERVICE, process.env.DEFAULT_MEETING_SERVICE)
-								lastEntry.statusMessage = await processInvalidLink(
+								lastEntry.statusMessage = processInvalidLink(
 									lastEntry.statusMessage,
 									'Set Meeting Later'
 								)
@@ -384,7 +383,7 @@ module.exports = class UserInviteHelper {
 						} else {
 							console.log(`❌ [BBB FAIL] BBB validation failed - link provided when none expected`)
 							lastEntry.status = 'Invalid'
-							lastEntry.statusMessage = await processInvalidLink(
+							lastEntry.statusMessage = processInvalidLink(
 								lastEntry.statusMessage,
 								'Link should be empty for Big Blue Button'
 							)
@@ -394,24 +393,18 @@ module.exports = class UserInviteHelper {
 					const validateDefaultBBB = async () => {
 						setMeetingInfo('', '')
 						if (process.env.DEFAULT_MEETING_SERVICE !== common.BBB_VALUE) {
-							lastEntry.statusMessage = await processInvalidLink(
-								lastEntry.statusMessage,
-								'Set Meeting Later'
-							)
+							lastEntry.statusMessage = processInvalidLink(lastEntry.statusMessage, 'Set Meeting Later')
 						}
 					}
 					//Platform Validation
 					const validateNoPlatformWithLink = async () => {
 						lastEntry.status = 'Invalid'
-						lastEntry.statusMessage = await processInvalidLink(
-							lastEntry.statusMessage,
-							'Platform is not filled'
-						)
+						lastEntry.statusMessage = processInvalidLink(lastEntry.statusMessage, 'Platform is not filled')
 					}
 					//Invalid Platform Validation
 					const validateInvalidPlatform = async () => {
 						lastEntry.status = 'Invalid'
-						lastEntry.statusMessage = await processInvalidLink(
+						lastEntry.statusMessage = processInvalidLink(
 							lastEntry.statusMessage,
 							'Invalid Meeting Platform'
 						)
@@ -975,9 +968,7 @@ module.exports = class UserInviteHelper {
 					session.statusMessage = this.appendWithComma(session.statusMessage, ' Invalid Row Action')
 				}
 
-				if (session.statusMessage && typeof session.statusMessage != 'string') {
-					session.statusMessage = await session.statusMessage.then((result) => result)
-				}
+				// Status message is now always a string - no Promise resolution needed
 			}
 
 			const SessionBodyData = rowsWithStatus.map((item) => {
@@ -1263,9 +1254,7 @@ module.exports = class UserInviteHelper {
 				output.push(data)
 			}
 
-			if (data.statusMessage && typeof data.statusMessage != 'string') {
-				data.statusMessage = await data.statusMessage.then((result) => result)
-			}
+			// Status message is now always a string - no Promise resolution needed
 		}
 		return output
 	}
