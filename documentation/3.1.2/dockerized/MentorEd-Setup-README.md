@@ -186,13 +186,13 @@ To enable the Citus extension for Mentor and User services, follow these steps.
      3. Enable Citus and set distribution columns for `mentoring` database by running the `citus_setup.sh`with the following arguments.
 
         ```bash
-        ./citus_setup.sh mentoring postgres://postgres:postgres@citus_release-3.1.2.0:5432/mentoring
+        ./citus_setup.sh mentoring postgres://postgres:postgres@citus_master:5432/mentoring
         ```
 
      4. Enable Citus and set distribution columns for `user` database by running the `citus_setup.sh`with the following arguments.
 
         ```bash
-        ./citus_setup.sh user postgres://postgres:postgres@citus_release-3.1.2.0:5432/user
+        ./citus_setup.sh user postgres://postgres:postgres@citus_master:5432/user
         ```
 
    - **Windows**
@@ -206,13 +206,13 @@ To enable the Citus extension for Mentor and User services, follow these steps.
      2. Enable Citus and set distribution columns for `mentoring` database by running the `citus_setup.bat`with the following arguments.
 
         ```
-        citus_setup.bat mentoring postgres://postgres:postgres@citus_release-3.1.2.0:5432/mentoring
+        citus_setup.bat mentoring postgres://postgres:postgres@citus_master:5432/mentoring
         ```
 
      3. Enable Citus and set distribution columns for `user` database by running the `citus_setup.bat`with the following arguments.
 
         ```
-        citus_setup.bat user postgres://postgres:postgres@citus_release-3.1.2.0:5432/user
+        citus_setup.bat user postgres://postgres:postgres@citus_master:5432/user
         ```
 
         > **Note:** Since the `citus_setup.bat` file requires arguments, it must be run from a terminal.
@@ -228,7 +228,7 @@ To ensure the persistence of database data when running `docker compose down`, i
    ```yaml
    citus:
      image: citusdata/citus:11.2.0
-     container_name: "citus_release-3.1.2.0"
+     container_name: "citus_master"
      ports:
        - 5432:5432
      volumes:
@@ -276,13 +276,13 @@ There are few forms required for mentoring application to run, to add those fall
    - **Ubuntu/Linux/Mac**
 
      ```bash
-     ./sample-data/mentoring/insert_sample_forms.sh mentoring postgres://postgres:postgres@citus_release-3.1.2.0:5432/mentoring
+     ./sample-data/mentoring/insert_sample_forms.sh mentoring postgres://postgres:postgres@citus_master:5432/mentoring
      ```
 
    - **Windows**
 
      ```
-     sample-data\mentoring\insert_sample_forms.bat mentoring postgres://postgres:postgres@citus_release-3.1.2.0:5432/mentoring
+     sample-data\mentoring\insert_sample_forms.bat mentoring postgres://postgres:postgres@citus_master:5432/mentoring
      ```
 
    After successfully running the script, forms will be added to database.
@@ -332,15 +332,15 @@ In such cases, you can generate sample user accounts using the steps below. This
    - **Ubuntu/Linux/Mac**
 
      ```bash
-     ./insert_sample_data.sh user postgres://postgres:postgres@citus_release-3.1.2.0:5432/user && \
-     ./insert_sample_data.sh mentoring postgres://postgres:postgres@citus_release-3.1.2.0:5432/mentoring
+     ./insert_sample_data.sh user postgres://postgres:postgres@citus_master:5432/user && \
+     ./insert_sample_data.sh mentoring postgres://postgres:postgres@citus_master:5432/mentoring
      ```
 
    - **Windows**
 
      ```
-     insert_sample_data.bat user postgres://postgres:postgres@citus_release-3.1.2.0:5432/user & ^
-     insert_sample_data.bat mentoring postgres://postgres:postgres@citus_release-3.1.2.0:5432/mentoring
+     insert_sample_data.bat user postgres://postgres:postgres@citus_master:5432/user & ^
+     insert_sample_data.bat mentoring postgres://postgres:postgres@citus_master:5432/mentoring
      ```
 
    After successfully running the script mentioned above, the following user accounts will be created and available for login:
