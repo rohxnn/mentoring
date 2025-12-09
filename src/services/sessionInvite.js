@@ -690,18 +690,68 @@ module.exports = class UserInviteHelper {
 	}
 
 	static async mapSessionToEntityValues(session, entitiesList) {
+		console.log(`🔄 [ENTITY MAPPING] Starting to map session fields to entity values`)
+		console.log(`   - Session title: ${session.title}`)
+		console.log(`   - Available entity types: [${entitiesList.map((e) => e.value).join(', ')}]`)
+
+		const sessionFieldsBeforeMapping = {}
+		entitiesList.forEach((entityType) => {
+			const sessionKey = entityType.value
+			sessionFieldsBeforeMapping[sessionKey] = session[sessionKey]
+		})
+		console.log(`   - Session fields before mapping:`, JSON.stringify(sessionFieldsBeforeMapping, null, 2))
+
 		entitiesList.forEach((entityType) => {
 			const sessionKey = entityType.value
 			const sessionValues = session[sessionKey]
 
+			console.log(
+				`   📝 [MAPPING ${sessionKey}] Session has "${sessionKey}": ${JSON.stringify(sessionValues)} (type: ${
+					Array.isArray(sessionValues) ? 'array' : typeof sessionValues
+				})`
+			)
+
 			if (Array.isArray(sessionValues)) {
 				const entityValues = entityType.entities
+				console.log(
+					`     - Available entities for "${sessionKey}": [${entityValues
+						.map((e) => `${e.label}:${e.value}`)
+						.join(', ')}]`
+				)
+
 				session[sessionKey] = sessionValues.map((sessionValue) => {
 					const entity = entityValues.find((e) => e.label.toLowerCase() === sessionValue.toLowerCase())
+					console.log(
+						`     - Mapping "${sessionValue}" → ${entity ? entity.value : sessionValue} (${
+							entity ? 'found' : 'not found'
+						})`
+					)
 					return entity ? entity.value : sessionValue
 				})
+
+				console.log(`     ✅ Final mapped "${sessionKey}": [${session[sessionKey].join(', ')}]`)
+			} else {
+				console.log(`     ⚠️ Skipping "${sessionKey}" - not an array`)
 			}
 		})
+
+		// Check if custom_entities should be created
+		const hasCustomEntities = entitiesList.some(
+			(entityType) => session[entityType.value] && Array.isArray(session[entityType.value])
+		)
+		console.log(`🔍 [CUSTOM ENTITIES CHECK] Should create custom_entities: ${hasCustomEntities}`)
+
+		if (hasCustomEntities) {
+			session.custom_entities = {}
+			entitiesList.forEach((entityType) => {
+				if (session[entityType.value] && Array.isArray(session[entityType.value])) {
+					session.custom_entities[entityType.value] = session[entityType.value]
+				}
+			})
+			console.log(`✅ [CUSTOM ENTITIES CREATED]`, JSON.stringify(session.custom_entities, null, 2))
+		} else {
+			console.log(`❌ [NO CUSTOM ENTITIES] No array fields found to create custom_entities`)
+		}
 
 		return session
 	}
