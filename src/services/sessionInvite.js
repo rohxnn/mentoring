@@ -51,6 +51,24 @@ module.exports = class UserInviteHelper {
 				console.log(`📧 [EMAIL CHECK] mentor.email: ${mentor.email}`)
 				console.log(`📋 [USER KEYS] mentor object keys: [${Object.keys(mentor).join(', ')}]`)
 
+				// If email is missing from cache, get fresh user data from database
+				let userWithEmail = mentor
+				if (!mentor.email) {
+					console.log(`⚠️ [EMAIL MISSING] Email not in cache, fetching fresh user data from database`)
+					const userQueries = require('@database/queries/userExtension')
+					userWithEmail = await userQueries.getMenteeExtension(userId, [], false, tenantCode)
+					console.log(`📧 [FRESH EMAIL CHECK] Fresh user email: ${userWithEmail?.email}`)
+					console.log(
+						`📋 [FRESH USER KEYS] Fresh user keys: [${Object.keys(userWithEmail || {}).join(', ')}]`
+					)
+
+					// If still no email, log detailed info
+					if (!userWithEmail?.email) {
+						console.log(`❌ [CRITICAL] User ${userId} has no email in database either!`)
+						console.log(`🔍 [DEBUG] Full fresh user object:`, JSON.stringify(userWithEmail, null, 2))
+					}
+				}
+
 				const isMentor = mentor.is_mentor
 
 				// download file to local directory
@@ -117,7 +135,7 @@ module.exports = class UserInviteHelper {
 
 				//update output path in file uploads
 				const rowsAffected = await fileUploadQueries.update(
-					{ id: data.fileDetails.id, organization_id: orgId },
+					{ id: parseInt(data.fileDetails.id), organization_id: parseInt(orgId) },
 					tenantCode,
 					update
 				)
@@ -158,7 +176,7 @@ module.exports = class UserInviteHelper {
 
 					if (templateData) {
 						const sessionUploadURL = await utils.getDownloadableUrl(output_path)
-						await this.sendSessionManagerEmail(templateData, mentor, sessionUploadURL) //Rename this to function to generic name since this function is used for both Invitee & Org-admin.
+						await this.sendSessionManagerEmail(templateData, userWithEmail, sessionUploadURL) //Rename this to function to generic name since this function is used for both Invitee & Org-admin.
 					}
 				}
 
