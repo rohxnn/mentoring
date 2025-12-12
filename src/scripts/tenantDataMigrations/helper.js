@@ -319,7 +319,7 @@ class MentoringDataMigrator {
 	}
 
 	async loadTenantAndOrgCsv() {
-		const csvPath = path.join(__dirname, '../../data/data_codes.csv')
+		const csvPath = path.join(__dirname, '../../data/sample_data_codes.csv')
 		if (!fs.existsSync(csvPath)) {
 			console.log('⚠️  data_codes.csv not found, using defaults')
 			return

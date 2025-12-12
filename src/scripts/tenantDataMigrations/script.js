@@ -24,7 +24,7 @@ const fs = require('fs')
 const path = require('path')
 
 console.log('\n📁 CSV Files Status:')
-const csvFiles = ['data_codes.csv']
+const csvFiles = ['sample_data_codes.csv']
 let allFilesExist = true
 
 csvFiles.forEach((file) => {
