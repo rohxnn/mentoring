@@ -134,6 +134,17 @@ module.exports = class OrgAdminService {
 				})
 			// Delete upcoming sessions of user as mentor
 			const removedSessionsDetail = await sessionQueries.removeAndReturnMentorSessions(bodyData.user_id)
+
+			if (removedSessionsDetail && removedSessionsDetail.length > 0) {
+				for (const userSession of removedSessionsDetail) {
+					try {
+						await cacheHelper.sessions.delete(tenantCode, userSession.id)
+					} catch (cacheError) {
+						console.error(`Cache deletion failed for session ${userSession.id}:`, cacheError)
+					}
+				}
+			}
+
 			const isAttendeesNotified = await adminService.unenrollAndNotifySessionAttendees(
 				removedSessionsDetail,
 				mentorDetails.organization_id ? mentorDetails.organization_id : '',

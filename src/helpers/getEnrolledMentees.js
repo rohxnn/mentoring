@@ -4,7 +4,7 @@ const userRequests = require('@requests/user')
 const entityTypeService = require('@services/entity-type')
 const { Parser } = require('@json2csv/plainjs')
 
-exports.getEnrolledMentees = async (sessionId, queryParams, userID, tenantCode) => {
+exports.getEnrolledMentees = async (sessionId, queryParams, tenantCode) => {
 	try {
 		const mentees = await sessionAttendeesQueries.findAll({ session_id: sessionId }, tenantCode)
 
@@ -36,7 +36,7 @@ exports.getEnrolledMentees = async (sessionId, queryParams, userID, tenantCode) 
 		})
 
 		// Fetch missing user details from DB if any
-		let userDetailsResult = await userRequests.getUserDetailedListUsingCache(menteesMapData, tenantCode)
+		let userDetailsResult = await userRequests.getUserDetailedListUsingCache(menteesMapData, tenantCode, true, true)
 		let enrolledUsers = userDetailsResult?.result || []
 
 		enrolledUsers.forEach((user) => {
