@@ -47,6 +47,7 @@ module.exports = class Form {
 				req.decodedToken.organization_code,
 				req.decodedToken.tenant_code
 			)
+
 			return updatedForm
 		} catch (error) {
 			return error
@@ -64,7 +65,10 @@ module.exports = class Form {
 	async read(req) {
 		try {
 			if (!req.params.id && Object.keys(req.body).length === 0) {
-				const form = await formsService.readAllFormsVersion(req.decodedToken.tenant_code)
+				const form = await formsService.readAllFormsVersion(
+					req.decodedToken.tenant_code,
+					req.decodedToken.organization_code
+				)
 				return form
 			} else {
 				const form = await formsService.read(

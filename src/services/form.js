@@ -31,6 +31,15 @@ module.exports = class FormsHelper {
 
 			await KafkaProducer.clearInternalCache('formVersion')
 
+			// delete form verions
+			try {
+				if (form) {
+					await cacheHelper.formVersions.delete(tenantCode, originalForm.organization_code || orgCode)
+				}
+			} catch (error) {
+				console.warn('Failed to invalidate form form versions:', error)
+			}
+
 			return responses.successResponse({
 				statusCode: httpStatusCode.created,
 				message: 'FORM_CREATED_SUCCESSFULLY',
@@ -109,6 +118,13 @@ module.exports = class FormsHelper {
 				}
 			} catch (error) {
 				console.warn('Failed to invalidate form cache:', error)
+			}
+
+			// delete form verions
+			try {
+				await cacheHelper.formVersions.delete(tenantCode, originalForm.organization_code)
+			} catch (error) {
+				console.warn('Failed to invalidate form form versions:', error)
 			}
 
 			return responses.successResponse({
@@ -202,77 +218,50 @@ module.exports = class FormsHelper {
 			throw error
 		}
 	}
-	static async readAllFormsVersion(tenantCode) {
+	static async readAllFormsVersion(tenantCode, orgCode) {
 		try {
 			const defaults = await getDefaults()
-			if (!defaults.orgCode)
+			if (!defaults.orgCode) {
 				return responses.failureResponse({
 					message: 'DEFAULT_ORG_CODE_NOT_SET',
 					statusCode: httpStatusCode.bad_request,
 					responseCode: 'CLIENT_ERROR',
 				})
-			if (!defaults.tenantCode)
+			}
+			if (!defaults.tenantCode) {
 				return responses.failureResponse({
 					message: 'DEFAULT_TENANT_CODE_NOT_SET',
 					statusCode: httpStatusCode.bad_request,
 					responseCode: 'CLIENT_ERROR',
 				})
+			}
 
-			// Fetch all forms from database (no "all forms" cache to avoid duplication)
-			const formsVersionData =
-				(await form.getAllFormsVersion({ [Op.in]: [defaults.tenantCode, tenantCode] })) || {}
+			let formsVersionData = null
 
-			// Cache each individual form for future individual reads
 			try {
-				if (Array.isArray(formsVersionData) && formsVersionData.length > 0) {
-					console.log(`Populating individual form caches for ${formsVersionData.length} forms...`)
-					const cachePromises = []
+				formsVersionData = await cacheHelper.formVersions.get(tenantCode, orgCode, formsVersionData)
+			} catch (Error) {
+				console.log('failed to set the form versions ', Error)
+			}
 
-					// For each form in the version data, fetch complete form and cache it
-					for (const formVersion of formsVersionData) {
-						if (formVersion.type) {
-							// Create a promise to fetch and cache the complete form
-							const cachePromise = (async () => {
-								try {
-									// Fetch complete form data by type (this should include sub_type)
-									const completeFormData = await formQueries.findFormsByFilter(
-										{ type: formVersion.type },
-										[tenantCode]
-									)
+			if (!formsVersionData) {
+				formsVersionData = await form.getAllFormsVersion(tenantCode, orgCode)
+				let defaultForms = await form.getAllFormsVersion(defaults.tenantCode, defaults.orgCode)
+				formsVersionData.push(...defaultForms)
+			}
 
-									if (completeFormData && completeFormData.length > 0) {
-										const formData = completeFormData[0]
-										if (formData.sub_type) {
-											await cacheHelper.forms.set(
-												tenantCode,
-												formData.organization_code || defaults.orgCode,
-												formData.type,
-												formData.sub_type,
-												formData
-											)
-										}
-									}
-								} catch (error) {
-									console.warn(`Failed to cache individual form for type ${formVersion.type}:`, error)
-								}
-							})()
+			const usersForms = utils.removeDefaultOrgData(formsVersionData, defaults.orgCode, 'type')
 
-							cachePromises.push(cachePromise)
-						}
-					}
-
-					// Execute all individual cache operations in parallel
-					await Promise.all(cachePromises)
-					console.log(`Individual forms cache population completed for tenant: ${tenantCode}`)
-				}
-			} catch (individualCacheError) {
-				console.warn('Failed to populate individual forms cache:', individualCacheError)
+			try {
+				await cacheHelper.formVersions.set(tenantCode, orgCode, usersForms)
+			} catch (Error) {
+				console.log('failed to set the forms', Error)
 			}
 
 			return responses.successResponse({
 				statusCode: httpStatusCode.ok,
 				message: 'FORM_VERSION_FETCHED_SUCCESSFULLY',
-				result: formsVersionData,
+				result: usersForms,
 			})
 		} catch (error) {
 			return error

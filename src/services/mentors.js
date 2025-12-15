@@ -568,7 +568,7 @@ module.exports = class MentorsHelper {
 			if (entityTypes instanceof Error) {
 				throw entityTypes
 			}
-			const validationData = removeDefaultOrgEntityTypes(entityTypes, defaults.orgCode)
+			const validationData = removeDefaultOrgEntityTypes(entityTypes, orgCode)
 			let mentorExtensionsModel = await mentorQueries.getColumns()
 
 			let res = utils.validateInput(data, validationData, mentorExtensionsModelName, skipValidation)

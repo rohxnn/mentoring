@@ -6,6 +6,9 @@ const { getDefaults } = require('@helpers/getDefaultOrgId')
 const responses = require('@helpers/responses')
 const cacheHelper = require('@generics/cacheHelper')
 const common = require('@constants/common')
+const menteeExtensionQueries = require('@database/queries/userExtension')
+const mentorExtensionQueries = require('@database/queries/mentorExtension')
+const sessionQueries = require('@database/queries/sessions')
 
 /**
  * Get entity types and entities with user-centric cache strategy and defaults fallback
@@ -447,9 +450,74 @@ async function getEntityTypeByValue(modelName, entityValue, tenantCode, orgCode)
 	return found
 }
 
+/**
+ * Get grouped entity types from cache by reading individual model caches
+ * This avoids data duplication by formatting raw cached data
+ */
+/**
+ * Clear user caches when entity types change
+ * When entity types are created/updated/deleted, user profiles become stale
+ * because they contain processed entity type data and display properties
+ * @method
+ * @name clearUserCachesForEntityType
+ * @param {String} organizationCode - organization code affected
+ * @param {String} tenantCode - tenant code affected
+ * @param {String} modelName - model name affected (optional)
+ * @param {String} entityValue - entity value affected (optional)
+ * @returns {Promise<void>}
+ */
+async function clearUserCachesForEntityType(organizationCode, tenantCode, modelName = null, entityValue = null) {
+	const safeRun = (promise) =>
+		promise.catch(() => {
+			/* Ignore cache clear errors */
+		})
+
+	try {
+		const modelNames = Array.isArray(modelName) ? modelName : modelName ? [modelName] : []
+
+		const clearPromises = []
+
+		clearPromises.push(safeRun(cacheHelper.displayProperties.delete(tenantCode, organizationCode)))
+
+		if (entityValue) {
+			for (const model of modelNames) {
+				clearPromises.push(
+					safeRun(cacheHelper.entityTypes.delete(tenantCode, organizationCode, model, entityValue))
+				)
+			}
+		}
+
+		const [menteeModel, mentorModel, sessionModel] = await Promise.all([
+			menteeExtensionQueries.getModelName(),
+			mentorExtensionQueries.getModelName(),
+			sessionQueries.getModelName(),
+		])
+
+		const shouldClearProfileCaches = modelNames.some((m) => m === menteeModel || m === mentorModel)
+
+		const shouldClearSessionCaches = modelNames.includes(sessionModel)
+
+		// Clear user extension caches
+		if (shouldClearProfileCaches) {
+			safeRun(cacheHelper.mentee.evictMentee(tenantCode))
+			safeRun(cacheHelper.mentor.evictMentor(tenantCode))
+		}
+
+		// Clear session caches
+		if (shouldClearSessionCaches) {
+			safeRun(cacheHelper.sessions.evictSessions(tenantCode))
+		}
+
+		await Promise.all(clearPromises)
+	} catch (error) {
+		throw error
+	}
+}
+
 module.exports = {
 	getEntityTypesAndEntitiesWithCache,
 	getEntityTypesAndEntitiesForModel,
 	getEntityTypeByValue,
 	clearModelCache,
+	clearUserCachesForEntityType,
 }

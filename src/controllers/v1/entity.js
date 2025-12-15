@@ -107,7 +107,8 @@ module.exports = class Entity {
 				req.searchText,
 				req.pageNo,
 				req.pageSize,
-				req.decodedToken.tenant_code
+				req.decodedToken.tenant_code,
+				req.decodedToken.organization_code
 			)
 		} catch (error) {
 			return error

@@ -136,7 +136,17 @@ module.exports = class UserEntityData {
 			// Optimized: Include entity_type details via association instead of forcing N+1 queries
 			return await Entity.findAndCountAll({
 				where: whereClause,
-				attributes: ['id', 'entity_type_id', 'value', 'label', 'status', 'type', 'created_by', 'created_at'],
+				attributes: [
+					'id',
+					'entity_type_id',
+					'value',
+					'label',
+					'status',
+					'type',
+					'created_by',
+					'created_at',
+					'tenant_code',
+				],
 				include: [
 					{
 						model: Entity.sequelize.models.EntityType,

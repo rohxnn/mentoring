@@ -483,6 +483,7 @@ const removeDefaultOrgEntityTypes = (entityTypes, orgCode) => {
 	const result = Array.from(entityTypeMap.values())
 	return result
 }
+
 const generateWhereClause = (tableName) => {
 	let whereClause = ''
 
@@ -1285,6 +1286,18 @@ function sortData(data = [], path = 'meta.sequence') {
 		return 0
 	})
 }
+function removeDefaultOrgData(data, defaulOrgCode, key) {
+	// 1. Collect all form types that exist for non-default tenants
+	const orgData = new Set(data.filter((f) => f.organization_code !== defaulOrgCode).map((f) => f[key]))
+
+	// 2. Filter out default forms that have a tenant override
+	return data.filter((f) => {
+		if (f.organization_code === defaulOrgCode && orgData.has(f[key])) {
+			return false // remove default version
+		}
+		return true // keep tenant version or default with no override
+	})
+}
 
 module.exports = {
 	hash: hash,
@@ -1343,4 +1356,5 @@ module.exports = {
 	transformEntityTypes,
 	getTenantViewName,
 	sortData,
+	removeDefaultOrgData,
 }

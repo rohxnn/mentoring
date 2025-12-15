@@ -120,7 +120,7 @@ module.exports = class MenteesHelper {
 			throw entityTypes
 		}
 
-		const validationData = removeDefaultOrgEntityTypes(entityTypes, organizationCode)
+		const validationData = removeDefaultOrgEntityTypes(entityTypes, mentee.organization_code)
 
 		//validationData = utils.removeParentEntityTypes(JSON.parse(JSON.stringify(validationData)))
 
@@ -2217,7 +2217,7 @@ module.exports = class MenteesHelper {
 			)
 
 			// validationData = utils.removeParentEntityTypes(JSON.parse(JSON.stringify(validationData)))
-			const validationData = removeDefaultOrgEntityTypes(entityTypes, requestedUserExtension.organization_code)
+			const validationData = removeDefaultOrgEntityTypes(entityTypes, mentorExtension.organization_code)
 			const processDbResponse = utils.processDbResponse(mentorExtension, validationData)
 
 			const profileMandatoryFields = await utils.validateProfileData(processDbResponse, validationData)

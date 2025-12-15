@@ -310,6 +310,12 @@ module.exports = {
 				defaultTtl: 86400, // 1 day
 				useInternal: false,
 			},
+			formVersions: {
+				name: 'formVersions',
+				enabled: true,
+				defaultTtl: 86400, // 1 day
+				useInternal: false,
+			},
 		},
 	},
 

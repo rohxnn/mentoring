@@ -261,12 +261,12 @@ async function delScoped({ tenantCode, orgCode, ns, id, useInternal = undefined 
  * If orgCode is provided will target org-level keys, otherwise tenant-level keys.
  * patternSuffix defaults to '*' (delete all keys under the namespace).
  */
-async function evictNamespace({ tenantCode, orgCode = null, ns, patternSuffix = '*' } = {}) {
+async function evictNamespace({ tenantCode, orgCode = null, ns, patternSuffix = '*' } = {}, { useInternal }) {
 	if (!tenantCode || !ns) return
 	if (!namespaceEnabled(ns)) return
 	const base = orgCode ? `tenant:${tenantCode}:org:${orgCode}` : `tenant:${tenantCode}`
 	const pattern = `${base}:${ns}:${patternSuffix}`
-	await scanAndDelete(pattern)
+	await scanAndDelete(pattern, { useInternal })
 }
 
 /**
@@ -278,7 +278,7 @@ async function evictNamespace({ tenantCode, orgCode = null, ns, patternSuffix = 
  *    opts.batchSize: number of keys to fetch per SCAN iteration (default BATCH)
  *    opts.unlink: if true will attempt UNLINK when available
  */
-async function scanAndDelete(pattern, { batchSize = BATCH, unlink = true } = {}) {
+async function scanAndDeleteRedis(pattern, { batchSize = BATCH, unlink = true } = {}) {
 	const redis = getRedisClient()
 	if (!redis) return
 	let cursor = '0'
@@ -300,6 +300,42 @@ async function scanAndDelete(pattern, { batchSize = BATCH, unlink = true } = {})
 			}
 		}
 	} while (cursor !== '0')
+}
+async function scanAndDelete(pattern, { useInternal = false }) {
+	if (useInternal) {
+		scanAndDeleteInternal(pattern)
+	} else {
+		scanAndDeleteRedis(pattern)
+	}
+}
+
+async function scanAndDeleteInternal(pattern, { batchSize = BATCH } = {}) {
+	const matchingKeys = InternalCache.scanKeys(pattern)
+
+	if (!matchingKeys.length);
+
+	let batch = []
+
+	for (const key of matchingKeys) {
+		batch.push(key)
+
+		if (batch.length >= batchSize) {
+			for (const k of batch) {
+				try {
+					InternalCache.delKey(k)
+				} catch (_) {}
+			}
+			batch = []
+		}
+	}
+	// Delete remaining keys
+	if (batch.length) {
+		for (const k of batch) {
+			try {
+				InternalCache.delKey(k)
+			} catch (_) {}
+		}
+	}
 }
 
 /** Evict all keys for a tenant + org by pattern */
@@ -371,6 +407,11 @@ const sessions = {
 
 	async reset(tenantCode, sessionId, sessionData, customTtl = null) {
 		return this.set(tenantCode, sessionId, sessionData, customTtl)
+	},
+	async evictSessions(tenantCode) {
+		const useInternal = nsUseInternal('sessions')
+		const pattern = `tenant:${tenantCode}:sessions:*`
+		await scanAndDelete(pattern, { useInternal })
 	},
 
 	/**
@@ -655,7 +696,8 @@ const entityTypes = {
 
 	// Clear all entityTypes cache for a tenant/org (useful after cache key format changes)
 	async clearAll(tenantCode, orgCode) {
-		return await evictNamespace({ tenantCode, orgCode: orgCode, ns: 'entityTypes' })
+		const useInternal = nsUseInternal('entityTypes')
+		return await evictNamespace({ tenantCode, orgCode: orgCode, ns: 'entityTypes' }, { useInternal })
 	},
 
 	/**
@@ -755,36 +797,12 @@ const entityTypes = {
 	 * Get entity types for specific model with mentor org code resolution using standard cache
 	 * @param {string} tenantCode - Tenant code
 	 * @param {string} currentOrgCode - Current organization code
-	 * @param {string} mentorOrganizationId - Mentor's organization ID (numeric)
 	 * @param {string} modelName - Model name ('Session' or 'UserExtension')
 	 * @returns {Promise<Array>} Array of entity types
 	 */
-	async getEntityTypesWithMentorOrg(tenantCode, currentOrgCode, mentorOrganizationId, modelName) {
+	async getEntityTypesWithMentorOrg(tenantCode, currentOrgCode, modelName) {
 		try {
-			// Step 1: Get mentor organization code using organization cache
-			let mentorOrgCode = null
-			if (mentorOrganizationId) {
-				try {
-					const mentorOrg = await organizations.get(tenantCode, currentOrgCode, mentorOrganizationId)
-					mentorOrgCode = mentorOrg?.organization_code
-				} catch (orgCacheError) {
-					console.warn('Organization cache lookup failed, falling back to database query')
-					// Fallback: Direct database query for organization code
-					const organisationExtensionQueries = require('@database/queries/organisationExtension')
-					const orgData = await organisationExtensionQueries.findOne(
-						{ organization_id: mentorOrganizationId },
-						tenantCode,
-						{ attributes: ['organization_code'], raw: true }
-					)
-					mentorOrgCode = orgData?.organization_code
-				}
-			}
-
-			// Step 2: Use mentor org code if available, otherwise current org code
-			const effectiveOrgCode = mentorOrgCode || currentOrgCode
-
-			// Step 3: Get entity types for the specific model and org
-			return await this.getAllEntityTypesForModel(tenantCode, effectiveOrgCode, modelName)
+			return await this.getAllEntityTypesForModel(tenantCode, currentOrgCode, modelName)
 		} catch (error) {
 			console.error('Failed to get entity types with mentor org resolution:', error)
 			return []
@@ -924,7 +942,8 @@ const forms = {
 	 * Invalidate all form-related cache for a tenant/org
 	 */
 	async evictAll(tenantCode, orgCode) {
-		return await evictNamespace({ tenantCode, orgCode: orgCode, ns: 'forms' })
+		const useInternal = nsUseInternal('forms')
+		return await evictNamespace({ tenantCode, orgCode: orgCode, ns: 'forms' }, { useInternal })
 	},
 }
 
@@ -1029,6 +1048,11 @@ const mentor = {
 		} catch (error) {
 			console.error(`❌ Failed to delete mentor profile ${mentorId} cache:`, error)
 		}
+	},
+	async evictMentor(tenantCode) {
+		const useInternal = nsUseInternal('mentor')
+		const pattern = `tenant:${tenantCode}:mentor:*`
+		await scanAndDelete(pattern, { useInternal })
 	},
 
 	_sanitizeProfileData(profileData) {
@@ -1268,6 +1292,13 @@ const mentee = {
 		} catch (error) {
 			console.error(`❌ Failed to delete mentee profile ${menteeId} cache:`, error)
 		}
+	},
+	async evictMentee(tenantCode) {
+		const useInternal = nsUseInternal('mentee')
+
+		const pattern = `tenant:${tenantCode}:mentee:*`
+
+		await scanAndDelete(pattern, { useInternal })
 	},
 
 	_sanitizeProfileData(profileData) {
@@ -1732,16 +1763,18 @@ const permissions = {
 	 * Evict all permissions for a specific role
 	 */
 	async evictRole(role) {
+		const useInternal = nsUseInternal('permissions')
 		const pattern = `permissions:role:${role}`
-		await scanAndDelete(pattern)
+		await scanAndDelete(pattern, { useInternal })
 	},
 
 	/**
 	 * Evict all permissions cache
 	 */
 	async evictAll() {
+		const useInternal = nsUseInternal('permissions')
 		const pattern = `permissions:*`
-		await scanAndDelete(pattern)
+		await scanAndDelete(pattern, { useInternal })
 	},
 }
 
@@ -1833,24 +1866,78 @@ const apiPermissions = {
 	 * Evict all permissions for a specific role across all modules and paths
 	 */
 	async evictRole(role) {
+		const useInternal = nsUseInternal('apiPermissions')
 		const pattern = `apiPermissions:role:${role}:*`
-		await scanAndDelete(pattern)
+		await scanAndDelete(pattern, { useInternal })
 	},
 
 	/**
 	 * Evict all permissions for a specific module across all roles and paths
 	 */
 	async evictModule(module) {
+		const useInternal = nsUseInternal('apiPermissions')
 		const pattern = `apiPermissions:*:module:${module}:*`
-		await scanAndDelete(pattern)
+		await scanAndDelete(pattern, { useInternal })
 	},
 
 	/**
 	 * Evict all API permissions cache
 	 */
 	async evictAll() {
+		const useInternal = nsUseInternal('apiPermissions')
 		const pattern = `apiPermissions:*`
-		await scanAndDelete(pattern)
+		await scanAndDelete(pattern, { useInternal })
+	},
+}
+
+const formVersions = {
+	/**
+	 * Get specific form by type and subtype with user-centric caching and defaults fallback
+	 */
+	async get(tenantCode, orgCode) {
+		try {
+			const useInternal = nsUseInternal('formVersions')
+
+			// Step 1: Check user-specific cache first
+			const userCacheKey = await buildKey({
+				tenantCode,
+				orgCode,
+				ns: 'formVersions',
+				id: '',
+			})
+			const cachedForm = await get(userCacheKey, { useInternal })
+			if (cachedForm) {
+				console.log(` Formversions  retrieved from user cache: tenant:${tenantCode}:org:${orgCode}`)
+				return cachedForm
+			}
+			return null
+		} catch (error) {
+			console.error(`❌ Failed to get formVersions  from cache/database:`, error)
+			return null
+		}
+	},
+
+	/**
+	 * Set specific form with 1-day TTL
+	 */
+	async set(tenantCode, orgCode, formData) {
+		return setScoped({
+			tenantCode,
+			orgCode: orgCode,
+			ns: 'formVersions',
+			id: '',
+			value: formData,
+			ttl: 86400, // 1 day TTL
+		})
+	},
+
+	/**
+	 * Delete specific form cache
+	 */
+	async delete(tenantCode, orgCode) {
+		const useInternal = nsUseInternal('formVersions')
+		const cacheKey = await buildKey({ tenantCode, orgCode: orgCode, ns: 'formVersions', id: '' })
+		return del(cacheKey, { useInternal })
 	},
 }
 
@@ -1887,6 +1974,7 @@ module.exports = {
 	displayProperties,
 	permissions,
 	apiPermissions,
+	formVersions,
 
 	// Introspection
 	_internal: {

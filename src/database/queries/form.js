@@ -93,7 +93,7 @@ module.exports = class FormsData {
 			}
 			const formData = await Form.findAll({
 				where: whereClause,
-				attributes: ['id', 'type', 'version'],
+				attributes: ['id', 'type', 'version', 'tenant_code', 'organization_code'],
 			})
 			return formData
 		} catch (error) {

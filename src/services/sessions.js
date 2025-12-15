@@ -279,7 +279,7 @@ module.exports = class SessionsHelper {
 			)
 
 			//validationData = utils.removeParentEntityTypes(JSON.parse(JSON.stringify(validationData)))
-			const validationData = removeDefaultOrgEntityTypes(entityTypes, defaults.orgCode)
+			const validationData = removeDefaultOrgEntityTypes(entityTypes, orgCode)
 			bodyData.status = common.PUBLISHED_STATUS
 			let res = utils.validateInput(bodyData, validationData, sessionModelName, skipValidation)
 			if (!res.success) {
@@ -398,7 +398,7 @@ module.exports = class SessionsHelper {
 						sessionAttendeesIds.push(attendee.mentee_id)
 					})
 
-					const attendeesAccounts = await userRequests.getUserDetailedList(
+					const attendeesAccounts = await userRequests.getUserDetailedListUsingCache(
 						sessionAttendeesIds,
 						tenantCode,
 						false,
@@ -761,7 +761,7 @@ module.exports = class SessionsHelper {
 			if (bodyData.status == common.VALID_STATUS) {
 				bodyData.status = sessionDetail.status
 			}
-			const validationData = removeDefaultOrgEntityTypes(entityTypes, defaults.orgCode)
+			const validationData = removeDefaultOrgEntityTypes(entityTypes, orgCode)
 			if (!method === common.DELETE_METHOD) {
 				let res = utils.validateInput(bodyData, validationData, sessionModelName, skipValidation)
 				if (!res.success) {
@@ -1058,7 +1058,7 @@ module.exports = class SessionsHelper {
 					sessionAttendeesIds.push(attendee.mentee_id)
 				})
 
-				const attendeesAccounts = await userRequests.getUserDetailedList(
+				const attendeesAccounts = await userRequests.getUserDetailedListUsingCache(
 					sessionAttendeesIds,
 					tenantCode,
 					false,
@@ -1717,15 +1717,13 @@ module.exports = class SessionsHelper {
 				// Get Session model entity types
 				sessionEntityTypes = await cacheHelper.entityTypes.getEntityTypesWithMentorOrg(
 					tenantCode,
-					orgCode,
-					sessionDetails.mentor_organization_id,
+					sessionAccessorDetails.organization_code,
 					sessionModelName
 				)
 
 				accessorEntityTypes = await cacheHelper.entityTypes.getEntityTypesWithMentorOrg(
 					tenantCode,
 					sessionAccessorDetails.organization_code,
-					sessionAccessorDetails.organization_id,
 					mentorExtensionsModelName
 				)
 
@@ -1737,7 +1735,10 @@ module.exports = class SessionsHelper {
 			}
 
 			if (mentorExtension?.user_id) {
-				const validationData = removeDefaultOrgEntityTypes(entityTypes, defaults.orgCode)
+				const validationData = removeDefaultOrgEntityTypes(
+					entityTypes,
+					sessionAccessorDetails.organization_code
+				)
 				const processedEntityType = utils.processDbResponse(
 					{
 						designation: mentorExtension.designation,
@@ -1750,7 +1751,10 @@ module.exports = class SessionsHelper {
 
 			sessionDetails['resources'] = await this.getResources(sessionDetails.id, tenantCode)
 
-			const validationData = removeDefaultOrgEntityTypes(sessionEntityTypes, defaults.orgCode)
+			const validationData = removeDefaultOrgEntityTypes(
+				sessionEntityTypes,
+				sessionAccessorDetails.organization_code
+			)
 
 			const processDbResponse = utils.processDbResponse(sessionDetails, validationData)
 
@@ -3681,7 +3685,7 @@ module.exports = class SessionsHelper {
 			}
 
 			// Get mentee name and email from user service
-			const menteeAccounts = await userRequests.getUserDetailedList(menteeIds, tenantCode, false, true)
+			const menteeAccounts = await userRequests.getUserDetailedListUsingCache(menteeIds, tenantCode, false, true)
 
 			if (!menteeAccounts.result || !menteeAccounts.result.length > 0) {
 				return responses.failureResponse({
