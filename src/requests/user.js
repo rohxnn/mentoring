@@ -869,8 +869,10 @@ const getUserDetailedListUsingCache = async function (userIds, tenantCode, delet
 				unscopped
 			)
 
+			userDetails.push(...usersFromDb)
+
 			let unCachedUsers = []
-			for (userDetail of usersFromDb) {
+			for (const userDetail of usersFromDb) {
 				unCachedUsers.push({
 					user_id: userDetail.user_id,
 					is_mentor: userDetail.is_mentor,

@@ -209,9 +209,9 @@ module.exports = class UserHelper {
 
 		try {
 			if (!isNewUser && isAMentor) {
-				await cacheHelper.mentor.delete(tenantCode, updateData.userId)
+				await cacheHelper.mentor.delete(userDetails.data.result.tenant_code, userId)
 			} else if (!isNewUser) {
-				await cacheHelper.mentee.delete(tenantCode, updateData.userId)
+				await cacheHelper.mentee.delete(userDetails.data.result.tenant_code, userId)
 			}
 		} catch (error) {
 			//  not require to clear the chache

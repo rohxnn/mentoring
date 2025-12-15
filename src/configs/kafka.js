@@ -95,7 +95,7 @@ async function startConsumer(kafkaClient) {
 					) {
 						response = await organizationConsumer.messageReceived(payload)
 					}
-					if (payload.eventType == 'readUser') {
+					if (payload.eventType === 'readUser') {
 						response = await readUser.messageReceived(payload)
 					}
 				}

@@ -31,7 +31,7 @@ module.exports = class FormsHelper {
 
 			await KafkaProducer.clearInternalCache('formVersion')
 
-			// delete form verions
+			// delete form versions
 			try {
 				if (form) {
 					await cacheHelper.formVersions.delete(tenantCode, form.organization_code || orgCode)
