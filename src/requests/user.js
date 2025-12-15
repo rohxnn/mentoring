@@ -871,16 +871,18 @@ const getUserDetailedListUsingCache = async function (userIds, tenantCode, delet
 
 			userDetails.push(...usersFromDb)
 
-			let unCachedUsers = []
-			for (const userDetail of usersFromDb) {
-				unCachedUsers.push({
-					user_id: userDetail.user_id,
-					is_mentor: userDetail.is_mentor,
-					tenant_code: userDetail.tenant_code,
-					organization_code: userDetail.organization_code,
-				})
+			if (cacheHelper._internal.ENABLE_CACHE) {
+				let unCachedUsers = []
+				for (const userDetail of usersFromDb) {
+					unCachedUsers.push({
+						user_id: userDetail.user_id,
+						is_mentor: userDetail.is_mentor,
+						tenant_code: userDetail.tenant_code,
+						organization_code: userDetail.organization_code,
+					})
+				}
+				await kafkaCommunication.pushUncachedUsersToKafka(unCachedUsers)
 			}
-			await kafkaCommunication.pushUncachedUsersToKafka(unCachedUsers)
 		}
 
 		// ---- Organization Mapping ----
