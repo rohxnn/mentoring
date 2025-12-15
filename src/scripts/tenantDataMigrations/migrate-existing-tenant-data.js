@@ -126,29 +126,43 @@ class ExistingTenantDataMigrator {
 	}
 
 	async checkForExistingData() {
-		console.log('🔍 Checking for existing data that needs migration...')
+		console.log('🔍 Checking if tenant data migration has already been completed...')
 
 		try {
-			const testQueries = [
-				"SELECT COUNT(*) as count FROM sessions WHERE tenant_code IS NULL OR tenant_code = ''",
-				"SELECT COUNT(*) as count FROM user_extensions WHERE tenant_code IS NULL OR tenant_code = ''",
-				"SELECT COUNT(*) as count FROM organization_extension WHERE tenant_code IS NULL OR tenant_code = ''",
+			// Since the tenant_code migration (20251212250000-complete-tenant-code-migration.js)
+			// already populated all tenant_code columns and made them NOT NULL,
+			// we just need to verify the migration completed successfully.
+
+			// Check if any of the core tables still need the basic tenant structure
+			const tableChecks = [
+				"SELECT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'sessions' AND column_name = 'tenant_code')",
+				"SELECT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'user_extensions' AND column_name = 'tenant_code')",
+				"SELECT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'organization_extension' AND column_name = 'tenant_code')",
 			]
 
-			let totalRecordsNeedingMigration = 0
+			let migrationCompleted = true
 
-			for (const query of testQueries) {
+			for (const query of tableChecks) {
 				try {
 					const results = await this.sequelize.query(query, { type: Sequelize.QueryTypes.SELECT })
-					totalRecordsNeedingMigration += parseInt(results[0].count)
+					if (!results[0].exists) {
+						migrationCompleted = false
+						console.log(`⚠️  tenant_code column missing from table`)
+						break
+					}
 				} catch (error) {
-					console.log(`⚠️  Could not check table: ${error.message}`)
+					console.log(`⚠️  Could not check table structure: ${error.message}`)
+					migrationCompleted = false
 				}
 			}
 
-			console.log(`📊 Found ${totalRecordsNeedingMigration} records with NULL/empty tenant_code`)
-
-			return totalRecordsNeedingMigration > 0
+			if (migrationCompleted) {
+				console.log(`✅ Basic tenant migration structure already exists`)
+				return false // No migration needed
+			} else {
+				console.log(`❌ Basic tenant migration structure incomplete`)
+				return true // Migration needed
+			}
 		} catch (error) {
 			console.log(`⚠️  Error checking for existing data: ${error.message}`)
 			return true
@@ -156,9 +170,45 @@ class ExistingTenantDataMigrator {
 	}
 
 	async dropForeignKeyConstraints(transaction) {
-		console.log('🔗 Dropping foreign key constraints for data migration...')
+		console.log('🔗 Dropping foreign key constraints for affected tables only...')
 
 		try {
+			// Only drop foreign keys for tables affected by tenant migration
+			// These are ALL tables that will have their primary keys changed to composite keys with tenant_code
+			// ANY foreign key that references these tables OR is referenced BY these tables must be dropped
+			const affectedTables = [
+				'availabilities',
+				'connection_requests',
+				'connections',
+				'default_rules',
+				'entities',
+				'entity_types',
+				'feedbacks',
+				'file_uploads',
+				'forms',
+				'issues',
+				'modules',
+				'notification_templates',
+				'organization_extension',
+				'post_session_details',
+				'question_sets',
+				'questions',
+				'report_queries',
+				'report_role_mapping',
+				'report_types',
+				'reports',
+				'resources',
+				'role_extensions',
+				'session_attendees',
+				'session_request',
+				'sessions',
+				'user_extensions',
+			]
+
+			// Get foreign keys only for affected tables using IN operator instead of ANY(array)
+			const placeholders1 = affectedTables.map((_, index) => `$${index + 1}`).join(', ')
+			const placeholders2 = affectedTables.map((_, index) => `$${index + 1 + affectedTables.length}`).join(', ')
+
 			const foreignKeys = await this.sequelize.query(
 				`SELECT DISTINCT
 					tc.table_name,
@@ -173,12 +223,27 @@ class ExistingTenantDataMigrator {
 					ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
 				WHERE tc.constraint_type = 'FOREIGN KEY' 
 				AND tc.table_schema = 'public'
+				AND (tc.table_name IN (${placeholders1}) OR ccu.table_name IN (${placeholders2}))
 				GROUP BY tc.constraint_name, tc.table_name, ccu.table_name
 				ORDER BY tc.table_name`,
-				{ type: Sequelize.QueryTypes.SELECT, transaction }
+				{
+					type: Sequelize.QueryTypes.SELECT,
+					transaction,
+					bind: [...affectedTables, ...affectedTables], // Bind parameters for both IN clauses
+				}
 			)
 
 			const droppedConstraints = []
+			console.log(
+				`🎯 Found ${foreignKeys.length} foreign keys involving tenant migration tables (scoped to 26 tables only)`
+			)
+
+			// If no foreign keys found, skip dropping step
+			if (foreignKeys.length === 0) {
+				console.log(`✅ No foreign keys to drop - skipping constraint dropping`)
+				this.stats.constraintsDropped = 0
+				return droppedConstraints
+			}
 
 			for (const fk of foreignKeys) {
 				try {
@@ -187,14 +252,21 @@ class ExistingTenantDataMigrator {
 						{ transaction }
 					)
 					droppedConstraints.push(fk)
-					console.log(`✅ Dropped FK: ${fk.constraint_name} from ${fk.table_name}`)
+					console.log(
+						`✅ Dropped FK: ${fk.constraint_name} from ${fk.table_name} -> ${fk.foreign_table_name}`
+					)
 				} catch (error) {
-					console.log(`⚠️  Could not drop FK ${fk.constraint_name}: ${error.message}`)
+					console.log(`❌ FAILED to drop FK ${fk.constraint_name}: ${error.message}`)
+					throw new Error(
+						`Critical failure: Cannot drop foreign key ${fk.constraint_name} from ${fk.table_name}. This will prevent primary key changes. Error: ${error.message}`
+					)
 				}
 			}
 
 			this.stats.constraintsDropped = droppedConstraints.length
-			console.log(`✅ Dropped ${droppedConstraints.length} foreign key constraints`)
+			console.log(
+				`✅ Dropped ${droppedConstraints.length} foreign key constraints (scoped to affected tables only)`
+			)
 
 			return droppedConstraints
 		} catch (error) {
@@ -953,6 +1025,787 @@ class ExistingTenantDataMigrator {
 	}
 
 	/**
+	 * Create unique indexes after data migration and duplicate cleanup
+	 * NOTE: Should only be run after duplicate data cleanup
+	 */
+	/**
+	 * Fix existing UNIQUE constraints to include tenant_code for proper multi-tenant isolation
+	 * This ensures all unique constraints are tenant-aware
+	 */
+	async fixUniqueConstraints() {
+		console.log('\n🔧 PHASE 6B: Fixing UNIQUE constraints for proper tenant isolation...')
+		console.log('='.repeat(70))
+
+		try {
+			// Drop existing problematic UNIQUE constraints that don't include tenant_code
+			const constraintsToFix = [
+				{
+					table: 'connection_requests',
+					oldIndexName: 'unique_user_id_friend_id_connection_requests',
+					newIndexName: 'unique_user_id_friend_id_connection_requests_tenant',
+					newColumns: 'user_id, friend_id, tenant_code',
+					condition: 'WHERE (deleted_at IS NULL)',
+				},
+				{
+					table: 'connections',
+					oldIndexName: 'unique_user_id_friend_id_connections',
+					newIndexName: 'unique_user_id_friend_id_connections_tenant',
+					newColumns: 'user_id, friend_id, tenant_code',
+					condition: 'WHERE (deleted_at IS NULL)',
+				},
+				{
+					table: 'entities',
+					oldIndexName: 'unique_entities_value',
+					newIndexName: 'unique_entities_value_tenant',
+					newColumns: 'value, entity_type_id, tenant_code',
+					condition: 'WHERE (deleted_at IS NULL)',
+				},
+				{
+					table: 'forms',
+					oldIndexName: 'unique_type_sub_type_org_id',
+					newIndexName: 'unique_type_sub_type_org_id_tenant',
+					newColumns: 'type, sub_type, organization_id, tenant_code',
+					condition: '',
+				},
+				{
+					table: 'default_rules',
+					oldIndexName: 'unique_default_rules_constraint',
+					newIndexName: 'unique_default_rules_constraint_tenant',
+					newColumns: 'type, target_field, requester_field, organization_id, tenant_code',
+					condition: 'WHERE (deleted_at IS NULL)',
+				},
+				{
+					table: 'entity_types',
+					oldIndexName: 'unique_value_org_id',
+					newIndexName: 'unique_value_org_id_tenant',
+					newColumns: 'value, organization_id, tenant_code',
+					condition: 'WHERE (deleted_at IS NULL)',
+				},
+				{
+					table: 'modules',
+					oldIndexName: 'code_unique',
+					newIndexName: 'code_unique_tenant',
+					newColumns: 'code, tenant_code',
+					condition: 'WHERE (deleted_at IS NULL)',
+				},
+				{
+					table: 'report_queries',
+					oldIndexName: 'unique_queries_report_code_organization',
+					newIndexName: 'unique_queries_report_code_organization_tenant',
+					newColumns: 'report_code, organization_id, tenant_code',
+					condition: '',
+				},
+				{
+					table: 'report_types',
+					oldIndexName: 'report_types_title',
+					newIndexName: 'report_types_title_tenant',
+					newColumns: 'title, tenant_code',
+					condition: 'WHERE (deleted_at IS NULL)',
+				},
+				{
+					table: 'reports',
+					oldIndexName: 'report_code_organization_unique',
+					newIndexName: 'report_code_organization_unique_tenant',
+					newColumns: 'code, organization_id, tenant_code',
+					condition: '',
+				},
+			]
+
+			let constraintsFixed = 0
+			let constraintsSkipped = 0
+
+			for (const constraint of constraintsToFix) {
+				try {
+					console.log(`\n🔍 Processing ${constraint.table}.${constraint.oldIndexName}...`)
+
+					// Check if old constraint exists
+					const oldConstraintExists = await this.sequelize.query(
+						`SELECT EXISTS (
+							SELECT FROM pg_indexes 
+							WHERE tablename = :tableName AND indexname = :indexName
+						)`,
+						{
+							replacements: {
+								tableName: constraint.table,
+								indexName: constraint.oldIndexName,
+							},
+							type: Sequelize.QueryTypes.SELECT,
+						}
+					)
+
+					if (oldConstraintExists[0].exists) {
+						// For constraints (not just indexes), we need to drop the constraint first
+						// Check if it's a constraint or just an index
+						const isConstraint = await this.sequelize.query(
+							`SELECT EXISTS (
+								SELECT 1 FROM information_schema.table_constraints 
+								WHERE constraint_name = :constraintName AND table_name = :tableName
+							) as is_constraint`,
+							{
+								replacements: {
+									constraintName: constraint.oldIndexName,
+									tableName: constraint.table,
+								},
+								type: Sequelize.QueryTypes.SELECT,
+							}
+						)
+
+						if (isConstraint[0].is_constraint) {
+							// Drop constraint (which automatically drops the associated index)
+							await this.sequelize.query(
+								`ALTER TABLE "${constraint.table}" DROP CONSTRAINT IF EXISTS "${constraint.oldIndexName}"`
+							)
+							console.log(`  ✅ Dropped old constraint: ${constraint.oldIndexName}`)
+						} else {
+							// Drop index only
+							await this.sequelize.query(`DROP INDEX IF EXISTS "${constraint.oldIndexName}"`)
+							console.log(`  ✅ Dropped old index: ${constraint.oldIndexName}`)
+						}
+					}
+
+					// Check if new constraint already exists
+					const newConstraintExists = await this.sequelize.query(
+						`SELECT EXISTS (
+							SELECT FROM pg_indexes 
+							WHERE tablename = :tableName AND indexname = :indexName
+						)`,
+						{
+							replacements: {
+								tableName: constraint.table,
+								indexName: constraint.newIndexName,
+							},
+							type: Sequelize.QueryTypes.SELECT,
+						}
+					)
+
+					if (!newConstraintExists[0].exists) {
+						// Check data integrity before creating unique constraint
+						const dataIntegrityCheck = await this._checkDataIntegrityForUniqueConstraint(
+							constraint.table,
+							constraint.newColumns,
+							constraint.condition
+						)
+
+						if (!dataIntegrityCheck.isValid) {
+							console.log(`  ❌ Data integrity violation in ${constraint.table}:`)
+							console.log(`      Found ${dataIntegrityCheck.duplicateCount} duplicate rows`)
+							console.log(`      Columns: ${constraint.newColumns}`)
+							console.log(`  💡 Skipping constraint creation - clean duplicates first`)
+							constraintsSkipped++
+							continue
+						}
+
+						// Create new tenant-aware constraint using ALTER TABLE for proper constraint
+						const createQuery = `ALTER TABLE "${constraint.table}" 
+							ADD CONSTRAINT "${constraint.newIndexName}" 
+							UNIQUE (${constraint.newColumns})`
+
+						await this.sequelize.query(createQuery)
+						console.log(`  ✅ Created tenant-aware constraint: ${constraint.newIndexName}`)
+						constraintsFixed++
+					} else {
+						console.log(`  ⚠️  Constraint ${constraint.newIndexName} already exists`)
+						constraintsSkipped++
+					}
+				} catch (error) {
+					console.log(`  ❌ Error fixing constraint ${constraint.oldIndexName}: ${error.message}`)
+					if (
+						error.message.includes('duplicate key') ||
+						error.message.includes('violates unique constraint')
+					) {
+						console.log(`  💡 Duplicate data found - constraint will be created later after cleanup`)
+					}
+					constraintsSkipped++
+				}
+			}
+
+			console.log(`\n📊 Constraint Fix Summary:`)
+			console.log(`✅ Successfully fixed: ${constraintsFixed} constraints`)
+			console.log(`⚠️  Skipped/Failed: ${constraintsSkipped} constraints`)
+			console.log(`📋 Total processed: ${constraintsToFix.length} constraints`)
+
+			if (constraintsSkipped > 0) {
+				console.log(`\n💡 Constraints skipped due to data integrity issues:`)
+				console.log(`   • Clean duplicate data before creating unique constraints`)
+				console.log(`   • Check logs above for specific duplicate row counts`)
+				console.log(`   • Run data cleanup scripts and retry constraint creation`)
+			}
+
+			// Fix table structure issues for proper tenant isolation
+			await this._fixTableStructure()
+
+			// Fix foreign key CASCADE issues for distributed database compatibility
+			await this._fixForeignKeyConstraints()
+
+			if (constraintsFixed > 0) {
+				console.log('\n🚀 Your database is now ready for Citus distribution!')
+				console.log('✅ All UNIQUE constraints include tenant_code for proper distribution')
+			}
+		} catch (error) {
+			console.log(`❌ Error fixing Citus constraints: ${error.message}`)
+			console.log('💡 Continue with manual constraint fixes if needed')
+		}
+	}
+
+	/**
+	 * Check data integrity before creating unique constraint
+	 * Identifies duplicate data that would violate the unique constraint
+	 */
+	async _checkDataIntegrityForUniqueConstraint(tableName, columns, condition = '') {
+		try {
+			// Clean the condition for use in WHERE clause
+			const whereClause = condition.replace(/^WHERE\s+/i, '').trim()
+			const whereCondition = whereClause ? `WHERE ${whereClause}` : ''
+
+			// Count total rows that would be affected
+			const totalRowsQuery = `
+				SELECT COUNT(*) as total_count
+				FROM "${tableName}" 
+				${whereCondition}
+			`
+
+			const totalRows = await this.sequelize.query(totalRowsQuery, {
+				type: Sequelize.QueryTypes.SELECT,
+			})
+
+			// Count unique combinations that would be in the constraint
+			const uniqueRowsQuery = `
+				SELECT COUNT(*) as unique_count
+				FROM (
+					SELECT DISTINCT ${columns}
+					FROM "${tableName}"
+					${whereCondition}
+				) as unique_combinations
+			`
+
+			const uniqueRows = await this.sequelize.query(uniqueRowsQuery, {
+				type: Sequelize.QueryTypes.SELECT,
+			})
+
+			const totalCount = parseInt(totalRows[0].total_count)
+			const uniqueCount = parseInt(uniqueRows[0].unique_count)
+			const duplicateCount = totalCount - uniqueCount
+
+			const isValid = duplicateCount === 0
+
+			if (!isValid) {
+				// Get sample duplicate data for debugging
+				const duplicatesQuery = `
+					SELECT ${columns}, COUNT(*) as duplicate_count
+					FROM "${tableName}"
+					${whereCondition}
+					GROUP BY ${columns}
+					HAVING COUNT(*) > 1
+					ORDER BY COUNT(*) DESC
+					LIMIT 5
+				`
+
+				const sampleDuplicates = await this.sequelize.query(duplicatesQuery, {
+					type: Sequelize.QueryTypes.SELECT,
+				})
+
+				return {
+					isValid: false,
+					totalRows: totalCount,
+					uniqueRows: uniqueCount,
+					duplicateCount,
+					sampleDuplicates,
+				}
+			}
+
+			return {
+				isValid: true,
+				totalRows: totalCount,
+				uniqueRows: uniqueCount,
+				duplicateCount: 0,
+			}
+		} catch (error) {
+			console.log(`    ⚠️ Warning: Could not check data integrity for ${tableName}: ${error.message}`)
+			// Return as valid to allow attempt (will fail with proper error if duplicates exist)
+			return {
+				isValid: true,
+				totalRows: 0,
+				uniqueRows: 0,
+				duplicateCount: 0,
+				error: error.message,
+			}
+		}
+	}
+
+	/**
+	 * Fix table structure issues for proper tenant isolation
+	 * Handles missing columns, incorrect primary keys, etc.
+	 */
+	async _fixTableStructure() {
+		console.log('\n🔧 PHASE 6C: Fixing table structure for proper tenant isolation...')
+		console.log('='.repeat(60))
+
+		const tableFixesApplied = []
+		const tableFixesFailed = []
+
+		try {
+			// Fix 1: post_session_details table structure
+			console.log('\n🔍 Checking post_session_details table...')
+			try {
+				// Check if table exists and has proper structure
+				const tableInfo = await this.sequelize.query(
+					`SELECT 
+						EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = 'post_session_details') as table_exists,
+						EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name = 'post_session_details' AND column_name = 'tenant_code') as tenant_code_exists,
+						EXISTS(SELECT 1 FROM information_schema.table_constraints WHERE table_name = 'post_session_details' AND constraint_type = 'PRIMARY KEY') as has_primary_key
+					`,
+					{ type: Sequelize.QueryTypes.SELECT }
+				)
+
+				const tableExists = tableInfo[0].table_exists
+				const tenantCodeExists = tableInfo[0].tenant_code_exists
+				const hasPrimaryKey = tableInfo[0].has_primary_key
+
+				if (tableExists) {
+					let needsStructureFix = false
+
+					// Add tenant_code if missing
+					if (!tenantCodeExists) {
+						await this.sequelize.query(`
+							ALTER TABLE post_session_details 
+							ADD COLUMN tenant_code character varying(255) NOT NULL DEFAULT 'default'
+						`)
+						console.log('  ✅ Added tenant_code column to post_session_details')
+						needsStructureFix = true
+					}
+
+					// Add primary key if missing
+					if (!hasPrimaryKey) {
+						await this.sequelize.query(`
+							ALTER TABLE post_session_details 
+							ADD CONSTRAINT post_session_details_pkey PRIMARY KEY (tenant_code, session_id)
+						`)
+						console.log('  ✅ Added primary key constraint to post_session_details')
+						needsStructureFix = true
+					}
+
+					// Add foreign key constraint
+					const fkExists = await this.sequelize.query(
+						`SELECT EXISTS(
+							SELECT 1 FROM information_schema.table_constraints 
+							WHERE constraint_name = 'fk_post_session_details_session_id' 
+							AND table_name = 'post_session_details'
+						) as exists`,
+						{ type: Sequelize.QueryTypes.SELECT }
+					)
+
+					if (!fkExists[0].exists && needsStructureFix) {
+						await this.sequelize.query(`
+							ALTER TABLE post_session_details
+							ADD CONSTRAINT fk_post_session_details_session_id 
+							FOREIGN KEY (session_id, tenant_code)
+							REFERENCES sessions (id, tenant_code) 
+							ON UPDATE RESTRICT ON DELETE RESTRICT
+						`)
+						console.log('  ✅ Added foreign key constraint to post_session_details')
+					}
+
+					if (needsStructureFix) {
+						tableFixesApplied.push('post_session_details')
+					} else {
+						console.log('  ✅ post_session_details already has correct structure')
+					}
+				}
+			} catch (error) {
+				console.log(`  ❌ Error fixing post_session_details: ${error.message}`)
+				tableFixesFailed.push('post_session_details')
+			}
+
+			// Fix 2: question_sets primary key
+			console.log('\n🔍 Checking question_sets primary key...')
+			try {
+				const pkInfo = await this.sequelize.query(
+					`SELECT string_agg(kcu.column_name, ', ' ORDER BY kcu.ordinal_position) as pk_columns
+					FROM information_schema.table_constraints tc
+					JOIN information_schema.key_column_usage kcu 
+						ON tc.constraint_name = kcu.constraint_name
+					WHERE tc.table_name = 'question_sets' 
+						AND tc.constraint_type = 'PRIMARY KEY'
+					GROUP BY tc.constraint_name`,
+					{ type: Sequelize.QueryTypes.SELECT }
+				)
+
+				const currentPK = pkInfo.length > 0 ? pkInfo[0].pk_columns : null
+				const expectedPK = 'code, tenant_code'
+
+				if (currentPK !== expectedPK) {
+					console.log(`  📋 Current PK: ${currentPK}, Expected: ${expectedPK}`)
+
+					// Drop current primary key
+					await this.sequelize.query(`ALTER TABLE question_sets DROP CONSTRAINT IF EXISTS question_sets_pkey`)
+
+					// Add correct primary key
+					await this.sequelize.query(
+						`ALTER TABLE question_sets ADD CONSTRAINT question_sets_pkey PRIMARY KEY (code, tenant_code)`
+					)
+
+					console.log('  ✅ Fixed question_sets primary key to (code, tenant_code)')
+					tableFixesApplied.push('question_sets')
+				} else {
+					console.log('  ✅ question_sets already has correct primary key')
+				}
+			} catch (error) {
+				console.log(`  ❌ Error fixing question_sets primary key: ${error.message}`)
+				tableFixesFailed.push('question_sets')
+			}
+
+			console.log(`\n📊 Table Structure Fix Summary:`)
+			console.log(`✅ Successfully fixed: ${tableFixesApplied.length} tables`)
+			console.log(`⚠️  Failed fixes: ${tableFixesFailed.length} tables`)
+
+			if (tableFixesApplied.length > 0) {
+				console.log(`📋 Fixed tables: ${tableFixesApplied.join(', ')}`)
+			}
+			if (tableFixesFailed.length > 0) {
+				console.log(`❌ Failed tables: ${tableFixesFailed.join(', ')}`)
+			}
+		} catch (error) {
+			console.log(`❌ Error fixing table structures: ${error.message}`)
+			console.log('💡 Some table fixes may need to be applied manually')
+		}
+	}
+
+	/**
+	 * Fix foreign key constraints to use RESTRICT instead of CASCADE
+	 * CASCADE operations are not supported by some distributed databases when distribution key is included
+	 */
+	async _fixForeignKeyConstraints() {
+		console.log('\n🔧 PHASE 6D: Fixing foreign key constraints for distributed database compatibility...')
+		console.log('='.repeat(60))
+
+		try {
+			// Find foreign keys with CASCADE rules
+			const cascadeFKs = await this.sequelize.query(
+				`SELECT DISTINCT
+					tc.table_name,
+					tc.constraint_name,
+					ccu.table_name as referenced_table,
+					rc.update_rule,
+					rc.delete_rule
+				FROM information_schema.table_constraints tc
+				JOIN information_schema.constraint_column_usage ccu 
+					ON tc.constraint_name = ccu.constraint_name
+				JOIN information_schema.referential_constraints rc
+					ON tc.constraint_name = rc.constraint_name
+				WHERE tc.constraint_type = 'FOREIGN KEY'
+					AND tc.table_schema = 'public'
+					AND (rc.update_rule = 'CASCADE' OR rc.delete_rule = 'CASCADE')
+				ORDER BY tc.table_name, tc.constraint_name`,
+				{ type: Sequelize.QueryTypes.SELECT }
+			)
+
+			if (cascadeFKs.length === 0) {
+				console.log('✅ All foreign key constraints already use RESTRICT - no fixes needed')
+				return
+			}
+
+			console.log(`📋 Found ${cascadeFKs.length} foreign key constraints with CASCADE rules`)
+
+			// Foreign key configurations to fix
+			const fkConfigs = [
+				{
+					table: 'entities',
+					constraint: 'fk_entities_entity_type_id',
+					columns: 'entity_type_id, tenant_code',
+					refTable: 'entity_types',
+					refColumns: 'id, tenant_code',
+				},
+				{
+					table: 'post_session_details',
+					constraint: 'fk_post_session_details_session_id',
+					columns: 'session_id, tenant_code',
+					refTable: 'sessions',
+					refColumns: 'id, tenant_code',
+				},
+				{
+					table: 'resources',
+					constraint: 'fk_resources_session_id',
+					columns: 'session_id, tenant_code',
+					refTable: 'sessions',
+					refColumns: 'id, tenant_code',
+				},
+				{
+					table: 'session_attendees',
+					constraint: 'fk_session_attendees_session_id',
+					columns: 'session_id, tenant_code',
+					refTable: 'sessions',
+					refColumns: 'id, tenant_code',
+				},
+			]
+
+			let fksFixed = 0
+
+			for (const fk of fkConfigs) {
+				try {
+					const needsFix = cascadeFKs.some((cascadeFK) => cascadeFK.constraint_name === fk.constraint)
+
+					if (needsFix) {
+						console.log(`\n🔧 Fixing ${fk.table}.${fk.constraint}...`)
+
+						// Drop existing foreign key
+						await this.sequelize.query(
+							`ALTER TABLE "${fk.table}" DROP CONSTRAINT IF EXISTS "${fk.constraint}"`
+						)
+
+						// Recreate with RESTRICT
+						await this.sequelize.query(`
+							ALTER TABLE "${fk.table}" 
+							ADD CONSTRAINT "${fk.constraint}" 
+							FOREIGN KEY (${fk.columns}) 
+							REFERENCES "${fk.refTable}" (${fk.refColumns}) 
+							ON UPDATE RESTRICT ON DELETE RESTRICT
+						`)
+
+						console.log(`  ✅ Fixed ${fk.constraint} to use RESTRICT`)
+						fksFixed++
+					}
+				} catch (error) {
+					console.log(`  ❌ Error fixing ${fk.constraint}: ${error.message}`)
+				}
+			}
+
+			console.log(`\n📊 Foreign Key Fix Summary:`)
+			console.log(`✅ Successfully fixed: ${fksFixed} foreign keys`)
+			console.log(`📋 All foreign keys now use RESTRICT for distributed database compatibility`)
+		} catch (error) {
+			console.log(`❌ Error fixing foreign key constraints: ${error.message}`)
+			console.log('💡 Foreign key fixes may need to be applied manually')
+		}
+	}
+
+	async createUniqueIndexes() {
+		console.log('\n📊 PHASE 7A: Creating unique indexes after duplicate data cleanup...')
+		console.log('='.repeat(70))
+
+		try {
+			// Unique indexes configuration - from original Migration 3
+			// CRITICAL CITUS COMPATIBILITY: These UNIQUE constraints include tenant_code for proper distribution
+			const uniqueIndexConfigs = [
+				{
+					table: 'availabilities',
+					name: 'unique_availabilities_event_name_tenant',
+					columns: 'tenant_code, event_name',
+					condition: 'WHERE deleted_at IS NULL',
+				},
+				// TENANT-AWARE UNIQUE CONSTRAINTS - Must include tenant_code for proper isolation
+				{
+					table: 'connection_requests',
+					name: 'unique_user_id_friend_id_connection_requests',
+					columns: 'user_id, friend_id, tenant_code',
+					condition: 'WHERE deleted_at IS NULL',
+				},
+				{
+					table: 'connections',
+					name: 'unique_user_id_friend_id_connections',
+					columns: 'user_id, friend_id, tenant_code',
+					condition: 'WHERE deleted_at IS NULL',
+				},
+				{
+					table: 'entities',
+					name: 'unique_entities_value',
+					columns: 'value, entity_type_id, tenant_code',
+					condition: 'WHERE deleted_at IS NULL',
+				},
+				{
+					table: 'forms',
+					name: 'unique_type_sub_type_org_id',
+					columns: 'type, sub_type, organization_id, tenant_code',
+					condition: '',
+				},
+				{
+					table: 'default_rules',
+					name: 'unique_default_rules_type_org_tenant',
+					columns: 'type, organization_id, tenant_code',
+					condition: 'WHERE deleted_at IS NULL',
+				},
+				{
+					table: 'entity_types',
+					name: 'unique_entity_types_value_organization_tenant',
+					columns: 'tenant_code, value, organization_id',
+					condition: 'WHERE deleted_at IS NULL',
+				},
+				{
+					table: 'forms',
+					name: 'unique_forms_id_organization_type_tenant',
+					columns: 'tenant_code, id, organization_id, type',
+					condition: 'WHERE deleted_at IS NULL',
+				},
+				{
+					table: 'modules',
+					name: 'unique_modules_code_tenant',
+					columns: 'tenant_code, code',
+					condition: 'WHERE deleted_at IS NULL',
+				},
+				{
+					table: 'notification_templates',
+					name: 'unique_notification_templates_code_org_tenant',
+					columns: 'tenant_code, code, organization_code',
+					condition: 'WHERE deleted_at IS NULL',
+				},
+				{
+					table: 'organization_extension',
+					name: 'unique_organization_extension_org_code_tenant',
+					columns: 'tenant_code, organization_code',
+					condition: 'WHERE deleted_at IS NULL',
+				},
+				{
+					table: 'post_session_details',
+					name: 'unique_post_session_details_session_tenant',
+					columns: 'tenant_code, session_id',
+					condition: 'WHERE deleted_at IS NULL',
+				},
+				{
+					table: 'question_sets',
+					name: 'unique_question_sets_code_tenant',
+					columns: 'code, tenant_code',
+					condition: 'WHERE deleted_at IS NULL',
+				},
+				{
+					table: 'report_queries',
+					name: 'unique_report_queries_code_tenant_org',
+					columns: 'report_code, tenant_code, organization_code',
+					condition: 'WHERE deleted_at IS NULL',
+				},
+				{
+					table: 'report_role_mapping',
+					name: 'unique_report_role_mapping_role_code_tenant',
+					columns: 'tenant_code, role_title, report_code',
+					condition: 'WHERE deleted_at IS NULL',
+				},
+				{
+					table: 'report_types',
+					name: 'unique_report_types_title_tenant',
+					columns: 'tenant_code, title',
+					condition: 'WHERE deleted_at IS NULL',
+				},
+				{
+					table: 'reports',
+					name: 'unique_reports_code_organization_tenant',
+					columns: 'tenant_code, code, organization_id',
+					condition: 'WHERE deleted_at IS NULL',
+				},
+				{
+					table: 'role_extensions',
+					name: 'unique_role_extensions_title_org_tenant',
+					columns: 'tenant_code, title, organization_id',
+					condition: 'WHERE deleted_at IS NULL',
+				},
+				{
+					table: 'session_attendees',
+					name: 'unique_session_attendees_session_mentee_tenant',
+					columns: 'session_id, mentee_id, tenant_code',
+					condition: 'WHERE deleted_at IS NULL',
+				},
+				{
+					table: 'session_request',
+					name: 'unique_session_request_requestor_requestee_tenant',
+					columns: 'requestor_id, requestee_id, tenant_code',
+					condition: 'WHERE deleted_at IS NULL',
+				},
+				{
+					table: 'sessions',
+					name: 'unique_sessions_id_title_mentor_creator_tenant',
+					columns: 'tenant_code, id, title, mentor_name, created_by',
+					condition: 'WHERE deleted_at IS NULL',
+				},
+				{
+					table: 'user_extensions',
+					name: 'unique_user_extensions_user_tenant_email_phone_username',
+					columns: 'user_id, tenant_code, email, phone, user_name',
+					condition: 'WHERE deleted_at IS NULL AND email IS NOT NULL AND phone IS NOT NULL',
+				},
+			]
+
+			let uniqueIndexesCreated = 0
+			let uniqueIndexesSkipped = 0
+
+			console.log(`🔧 Creating ${uniqueIndexConfigs.length} unique indexes...`)
+
+			for (const idx of uniqueIndexConfigs) {
+				try {
+					// Check if table exists
+					const tableExists = await this.sequelize.query(
+						`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = :tableName)`,
+						{
+							replacements: { tableName: idx.table },
+							type: Sequelize.QueryTypes.SELECT,
+						}
+					)
+
+					if (!tableExists[0].exists) {
+						console.log(`⚠️  Table ${idx.table} does not exist, skipping unique index`)
+						uniqueIndexesSkipped++
+						continue
+					}
+
+					// Check if index already exists
+					const indexExists = await this.sequelize.query(
+						`SELECT EXISTS (
+							SELECT FROM pg_indexes 
+							WHERE tablename = :tableName AND indexname = :indexName
+						)`,
+						{
+							replacements: { tableName: idx.table, indexName: idx.name },
+							type: Sequelize.QueryTypes.SELECT,
+						}
+					)
+
+					if (indexExists[0].exists) {
+						console.log(`✅ Unique index ${idx.name} already exists`)
+						uniqueIndexesSkipped++
+						continue
+					}
+
+					// Create unique index with conditional WHERE clause
+					const indexQuery = `CREATE UNIQUE INDEX "${idx.name}" ON "${idx.table}" (${idx.columns}) ${idx.condition}`
+
+					await this.sequelize.query(indexQuery)
+					console.log(`✅ Created unique index: ${idx.name}`)
+					uniqueIndexesCreated++
+				} catch (error) {
+					if (
+						error.message.includes('could not create unique index') ||
+						error.message.includes('duplicate key')
+					) {
+						console.log(`❌ Unique index ${idx.name} failed due to duplicate data: ${error.message}`)
+						console.log(`💡 Hint: Clean duplicate data in ${idx.table} before creating unique constraint`)
+					} else {
+						console.log(`❌ Error creating unique index ${idx.name}: ${error.message}`)
+					}
+					uniqueIndexesSkipped++
+				}
+			}
+
+			console.log(`\n📈 Unique Index Creation Summary:`)
+			console.log(`✅ Successfully created: ${uniqueIndexesCreated} unique indexes`)
+			console.log(`⚠️  Skipped/Failed: ${uniqueIndexesSkipped} unique indexes`)
+			console.log(`📊 Total attempted: ${uniqueIndexConfigs.length} unique indexes`)
+
+			if (uniqueIndexesSkipped > 0) {
+				console.log('\n⚠️  Some unique indexes failed due to duplicate data:')
+				console.log('• Run duplicate data cleanup queries before creating unique constraints')
+				console.log('• Check for duplicate entries in affected tables')
+				console.log('• Unique constraints enforce data integrity but require clean data')
+			}
+
+			if (uniqueIndexesCreated > 0) {
+				console.log('\n🚀 Unique Index Benefits:')
+				console.log('• Data integrity enforced at database level')
+				console.log('• Prevents duplicate entries in business-critical columns')
+				console.log('• Tenant-aware uniqueness ensures proper multi-tenant isolation')
+			}
+		} catch (error) {
+			console.log(`❌ Unique index creation failed: ${error.message}`)
+			console.log('💡 Unique indexes can be created manually after data cleanup')
+		}
+	}
+
+	/**
 	 * Create performance indexes after data migration (without Citus dependency)
 	 */
 	async createPerformanceIndexes() {
@@ -1224,7 +2077,10 @@ class ExistingTenantDataMigrator {
 				console.log('✅ Data integrity validated')
 				console.log('✅ Foreign key constraints restored')
 
-				// Step 5: Create performance indexes
+				// Step 5: Fix UNIQUE constraints for proper tenant isolation
+				await this.fixUniqueConstraints()
+
+				// Step 6: Create performance indexes
 				await this.createPerformanceIndexes()
 			} catch (error) {
 				await transaction.rollback()

@@ -177,55 +177,9 @@ module.exports = {
 				}
 			}
 
-			console.log('\n📝 PHASE 3: Adding user_name column to user_extensions...')
-			console.log('='.repeat(50))
+			// NOTE: user_name column addition moved to separate migration: 20251214000001-add-user-name-column.js
 
-			// Handle user_extensions table specifically
-			try {
-				const userExtensionsExists = await queryInterface.sequelize.query(
-					`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'user_extensions')`,
-					{ type: Sequelize.QueryTypes.SELECT, transaction }
-				)
-
-				if (userExtensionsExists[0].exists) {
-					const userNameExists = await queryInterface.sequelize.query(
-						`SELECT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'user_extensions' AND column_name = 'user_name')`,
-						{ type: Sequelize.QueryTypes.SELECT, transaction }
-					)
-
-					if (!userNameExists[0].exists) {
-						await queryInterface.addColumn(
-							'user_extensions',
-							'user_name',
-							{
-								type: Sequelize.STRING(255),
-								allowNull: true,
-							},
-							{ transaction }
-						)
-						console.log(`✅ Added user_name to user_extensions`)
-
-						// Populate user_name with user_id values
-						await queryInterface.sequelize.query(
-							`UPDATE user_extensions SET user_name = user_id WHERE user_name IS NULL`,
-							{ type: Sequelize.QueryTypes.UPDATE, transaction }
-						)
-						console.log(`✅ Populated user_name with user_id values`)
-					} else {
-						console.log(`✅ user_extensions already has user_name column`)
-						// Ensure user_name is populated
-						await queryInterface.sequelize.query(
-							`UPDATE user_extensions SET user_name = user_id WHERE user_name IS NULL`,
-							{ type: Sequelize.QueryTypes.UPDATE, transaction }
-						)
-					}
-				}
-			} catch (error) {
-				console.log(`❌ Error handling user_extensions: ${error.message}`)
-				throw error
-			}
-
-			console.log('\n📝 PHASE 4: Populating default values for tenant_code...')
+			console.log('\n📝 PHASE 3: Populating default values for tenant_code...')
 			console.log('='.repeat(50))
 
 			for (const tableName of allTables) {
@@ -261,7 +215,7 @@ module.exports = {
 				}
 			}
 
-			console.log('\n📝 PHASE 5: Populating default values for organization_code...')
+			console.log('\n📝 PHASE 4: Populating default values for organization_code...')
 			console.log('='.repeat(50))
 
 			for (const tableName of tablesNeedingOrgCode) {
@@ -297,7 +251,7 @@ module.exports = {
 				}
 			}
 
-			console.log('\n📝 PHASE 6: Making columns non-nullable...')
+			console.log('\n📝 PHASE 5: Making columns non-nullable...')
 			console.log('='.repeat(50))
 
 			// Make tenant_code non-nullable for all tables
@@ -454,13 +408,7 @@ module.exports = {
 				}
 			}
 
-			// Remove user_name column from user_extensions
-			try {
-				await queryInterface.removeColumn('user_extensions', 'user_name')
-				console.log(`✅ Removed user_name from user_extensions`)
-			} catch (error) {
-				console.log(`⚠️  Could not remove user_name from user_extensions: ${error.message}`)
-			}
+			// NOTE: user_name column removal handled by separate migration: 20251214000001-add-user-name-column.js
 
 			console.log('✅ Rollback completed')
 		} catch (error) {
