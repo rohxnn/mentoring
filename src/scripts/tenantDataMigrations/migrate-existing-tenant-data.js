@@ -280,6 +280,7 @@ class ExistingTenantDataMigrator {
 
 		let restoredCount = 0
 		let skippedCitusIncompatible = 0
+		let unexpectedErrors = 0
 
 		// Check if Citus extension is available
 		let citusEnabled = false
@@ -333,8 +334,22 @@ class ExistingTenantDataMigrator {
 				console.log(`✅ Restored FK: ${fk.constraint_name} on ${fk.table_name}`)
 				restoredCount++
 			} catch (error) {
-				console.log(`❌ Error restoring FK ${fk.constraint_name}: ${error.message}`)
-				// Don't count as failure - Citus incompatible constraints are expected to fail
+				// Check if this is an expected Citus-incompatibility error
+				const isCitusError = this.isCitusCompatibilityError(error, fk)
+
+				if (isCitusError) {
+					// Expected Citus incompatibility - log at info level
+					console.log(`ℹ️  Skipping FK restoration due to Citus incompatibility: ${fk.constraint_name}`)
+					console.log(`   Context: ${error.message.substring(0, 100)}...`)
+					skippedCitusIncompatible++
+				} else {
+					// Unexpected error - log as actual failure
+					console.log(`❌ UNEXPECTED ERROR restoring FK ${fk.constraint_name}:`)
+					console.log(`   Message: ${error.message}`)
+					console.log(`   Table: ${fk.table_name}, Constraint: ${fk.constraint_name}`)
+					console.log(`   Stack: ${error.stack}`)
+					unexpectedErrors++
+				}
 			}
 		}
 
@@ -345,6 +360,12 @@ class ExistingTenantDataMigrator {
 			console.log(
 				`💡 Note: Skipped constraints don't include tenant_code and are incompatible with distributed tables`
 			)
+		}
+		if (unexpectedErrors > 0) {
+			console.log(`🚨 UNEXPECTED ERRORS: ${unexpectedErrors} foreign key restoration failures`)
+			console.log(`⚠️  These are NOT expected Citus incompatibilities - review the errors above`)
+			// Consider throwing if there are critical unexpected errors
+			// throw new Error(`Foreign key restoration failed with ${unexpectedErrors} unexpected errors`)
 		}
 	}
 
@@ -365,6 +386,48 @@ class ExistingTenantDataMigrator {
 		// Skip single-column constraints to non-distributed tables that would cause issues
 		const problematicTables = ['connections', 'session_attendees', 'sessions']
 		if (problematicTables.includes(fk.table_name) && !includesTenantCode) {
+			return true
+		}
+
+		return false
+	}
+
+	/**
+	 * Check if an error is due to expected Citus compatibility issues
+	 */
+	isCitusCompatibilityError(error, fk) {
+		const errorMessage = error.message?.toLowerCase() || ''
+		const errorCode = error.code || ''
+
+		// Common Citus-related error patterns
+		const citusErrorPatterns = [
+			'distribution column',
+			'distributed table',
+			'reference table',
+			'cannot create foreign key constraint',
+			'foreign key constraints',
+			'cross-shard',
+			'distribution key',
+			'colocated',
+			'sharded table',
+		]
+
+		// Check if error message contains Citus-specific terms
+		const isCitusRelated = citusErrorPatterns.some((pattern) => errorMessage.includes(pattern))
+
+		// If it's Citus-related AND the constraint was already identified as incompatible
+		if (isCitusRelated && this.isCitusIncompatibleConstraint(fk)) {
+			return true
+		}
+
+		// Additional PostgreSQL error codes that are typically Citus-related in this context
+		const citusErrorCodes = [
+			'42P16', // invalid_table_definition
+			'42804', // datatype_mismatch
+			'23503', // foreign_key_violation (when related to distribution)
+		]
+
+		if (citusErrorCodes.includes(errorCode) && this.isCitusIncompatibleConstraint(fk)) {
 			return true
 		}
 
@@ -1199,13 +1262,24 @@ class ExistingTenantDataMigrator {
 							continue
 						}
 
-						// Create new tenant-aware constraint using ALTER TABLE for proper constraint
-						const createQuery = `ALTER TABLE "${constraint.table}" 
-							ADD CONSTRAINT "${constraint.newIndexName}" 
-							UNIQUE (${constraint.newColumns})`
+						// Create new tenant-aware constraint - use partial index if condition exists
+						if (constraint.condition && constraint.condition.trim()) {
+							// Create partial unique index for conditional constraints
+							const createIndexQuery = `CREATE UNIQUE INDEX "${constraint.newIndexName}" 
+								ON "${constraint.table}" (${constraint.newColumns}) 
+								${constraint.condition}`
 
-						await this.sequelize.query(createQuery)
-						console.log(`  ✅ Created tenant-aware constraint: ${constraint.newIndexName}`)
+							await this.sequelize.query(createIndexQuery)
+							console.log(`  ✅ Created tenant-aware partial unique index: ${constraint.newIndexName}`)
+						} else {
+							// Create full-table unique constraint for non-conditional constraints
+							const createConstraintQuery = `ALTER TABLE "${constraint.table}" 
+								ADD CONSTRAINT "${constraint.newIndexName}" 
+								UNIQUE (${constraint.newColumns})`
+
+							await this.sequelize.query(createConstraintQuery)
+							console.log(`  ✅ Created tenant-aware unique constraint: ${constraint.newIndexName}`)
+						}
 						constraintsFixed++
 					} else {
 						console.log(`  ⚠️  Constraint ${constraint.newIndexName} already exists`)
@@ -1370,10 +1444,13 @@ class ExistingTenantDataMigrator {
 
 					// Add tenant_code if missing
 					if (!tenantCodeExists) {
-						await this.sequelize.query(`
-							ALTER TABLE post_session_details 
-							ADD COLUMN tenant_code character varying(255) NOT NULL DEFAULT 'default'
-						`)
+						await this.sequelize.query(
+							`ALTER TABLE post_session_details 
+							ADD COLUMN tenant_code character varying(255) NOT NULL DEFAULT :defaultTenantCode`,
+							{
+								replacements: { defaultTenantCode: this.defaultTenantCode },
+							}
+						)
 						console.log('  ✅ Added tenant_code column to post_session_details')
 						needsStructureFix = true
 					}
@@ -1398,7 +1475,7 @@ class ExistingTenantDataMigrator {
 						{ type: Sequelize.QueryTypes.SELECT }
 					)
 
-					if (!fkExists[0].exists && needsStructureFix) {
+					if (!fkExists[0].exists) {
 						await this.sequelize.query(`
 							ALTER TABLE post_session_details
 							ADD CONSTRAINT fk_post_session_details_session_id 
@@ -1579,233 +1656,6 @@ class ExistingTenantDataMigrator {
 		} catch (error) {
 			console.log(`❌ Error fixing foreign key constraints: ${error.message}`)
 			console.log('💡 Foreign key fixes may need to be applied manually')
-		}
-	}
-
-	async createUniqueIndexes() {
-		console.log('\n📊 PHASE 7A: Creating unique indexes after duplicate data cleanup...')
-		console.log('='.repeat(70))
-
-		try {
-			// Unique indexes configuration - from original Migration 3
-			// CRITICAL CITUS COMPATIBILITY: These UNIQUE constraints include tenant_code for proper distribution
-			const uniqueIndexConfigs = [
-				{
-					table: 'availabilities',
-					name: 'unique_availabilities_event_name_tenant',
-					columns: 'tenant_code, event_name',
-					condition: 'WHERE deleted_at IS NULL',
-				},
-				// TENANT-AWARE UNIQUE CONSTRAINTS - Must include tenant_code for proper isolation
-				{
-					table: 'connection_requests',
-					name: 'unique_user_id_friend_id_connection_requests',
-					columns: 'user_id, friend_id, tenant_code',
-					condition: 'WHERE deleted_at IS NULL',
-				},
-				{
-					table: 'connections',
-					name: 'unique_user_id_friend_id_connections',
-					columns: 'user_id, friend_id, tenant_code',
-					condition: 'WHERE deleted_at IS NULL',
-				},
-				{
-					table: 'entities',
-					name: 'unique_entities_value',
-					columns: 'value, entity_type_id, tenant_code',
-					condition: 'WHERE deleted_at IS NULL',
-				},
-				{
-					table: 'forms',
-					name: 'unique_type_sub_type_org_id',
-					columns: 'type, sub_type, organization_id, tenant_code',
-					condition: '',
-				},
-				{
-					table: 'default_rules',
-					name: 'unique_default_rules_type_org_tenant',
-					columns: 'type, organization_id, tenant_code',
-					condition: 'WHERE deleted_at IS NULL',
-				},
-				{
-					table: 'entity_types',
-					name: 'unique_entity_types_value_organization_tenant',
-					columns: 'tenant_code, value, organization_id',
-					condition: 'WHERE deleted_at IS NULL',
-				},
-				{
-					table: 'forms',
-					name: 'unique_forms_id_organization_type_tenant',
-					columns: 'tenant_code, id, organization_id, type',
-					condition: 'WHERE deleted_at IS NULL',
-				},
-				{
-					table: 'modules',
-					name: 'unique_modules_code_tenant',
-					columns: 'tenant_code, code',
-					condition: 'WHERE deleted_at IS NULL',
-				},
-				{
-					table: 'notification_templates',
-					name: 'unique_notification_templates_code_org_tenant',
-					columns: 'tenant_code, code, organization_code',
-					condition: 'WHERE deleted_at IS NULL',
-				},
-				{
-					table: 'organization_extension',
-					name: 'unique_organization_extension_org_code_tenant',
-					columns: 'tenant_code, organization_code',
-					condition: 'WHERE deleted_at IS NULL',
-				},
-				{
-					table: 'post_session_details',
-					name: 'unique_post_session_details_session_tenant',
-					columns: 'tenant_code, session_id',
-					condition: 'WHERE deleted_at IS NULL',
-				},
-				{
-					table: 'question_sets',
-					name: 'unique_question_sets_code_tenant',
-					columns: 'code, tenant_code',
-					condition: 'WHERE deleted_at IS NULL',
-				},
-				{
-					table: 'report_queries',
-					name: 'unique_report_queries_code_tenant_org',
-					columns: 'report_code, tenant_code, organization_code',
-					condition: 'WHERE deleted_at IS NULL',
-				},
-				{
-					table: 'report_role_mapping',
-					name: 'unique_report_role_mapping_role_code_tenant',
-					columns: 'tenant_code, role_title, report_code',
-					condition: 'WHERE deleted_at IS NULL',
-				},
-				{
-					table: 'report_types',
-					name: 'unique_report_types_title_tenant',
-					columns: 'tenant_code, title',
-					condition: 'WHERE deleted_at IS NULL',
-				},
-				{
-					table: 'reports',
-					name: 'unique_reports_code_organization_tenant',
-					columns: 'tenant_code, code, organization_id',
-					condition: 'WHERE deleted_at IS NULL',
-				},
-				{
-					table: 'role_extensions',
-					name: 'unique_role_extensions_title_org_tenant',
-					columns: 'tenant_code, title, organization_id',
-					condition: 'WHERE deleted_at IS NULL',
-				},
-				{
-					table: 'session_attendees',
-					name: 'unique_session_attendees_session_mentee_tenant',
-					columns: 'session_id, mentee_id, tenant_code',
-					condition: 'WHERE deleted_at IS NULL',
-				},
-				{
-					table: 'session_request',
-					name: 'unique_session_request_requestor_requestee_tenant',
-					columns: 'requestor_id, requestee_id, tenant_code',
-					condition: 'WHERE deleted_at IS NULL',
-				},
-				{
-					table: 'sessions',
-					name: 'unique_sessions_id_title_mentor_creator_tenant',
-					columns: 'tenant_code, id, title, mentor_name, created_by',
-					condition: 'WHERE deleted_at IS NULL',
-				},
-				{
-					table: 'user_extensions',
-					name: 'unique_user_extensions_user_tenant_email_phone_username',
-					columns: 'user_id, tenant_code, email, phone, user_name',
-					condition: 'WHERE deleted_at IS NULL AND email IS NOT NULL AND phone IS NOT NULL',
-				},
-			]
-
-			let uniqueIndexesCreated = 0
-			let uniqueIndexesSkipped = 0
-
-			console.log(`🔧 Creating ${uniqueIndexConfigs.length} unique indexes...`)
-
-			for (const idx of uniqueIndexConfigs) {
-				try {
-					// Check if table exists
-					const tableExists = await this.sequelize.query(
-						`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = :tableName)`,
-						{
-							replacements: { tableName: idx.table },
-							type: Sequelize.QueryTypes.SELECT,
-						}
-					)
-
-					if (!tableExists[0].exists) {
-						console.log(`⚠️  Table ${idx.table} does not exist, skipping unique index`)
-						uniqueIndexesSkipped++
-						continue
-					}
-
-					// Check if index already exists
-					const indexExists = await this.sequelize.query(
-						`SELECT EXISTS (
-							SELECT FROM pg_indexes 
-							WHERE tablename = :tableName AND indexname = :indexName
-						)`,
-						{
-							replacements: { tableName: idx.table, indexName: idx.name },
-							type: Sequelize.QueryTypes.SELECT,
-						}
-					)
-
-					if (indexExists[0].exists) {
-						console.log(`✅ Unique index ${idx.name} already exists`)
-						uniqueIndexesSkipped++
-						continue
-					}
-
-					// Create unique index with conditional WHERE clause
-					const indexQuery = `CREATE UNIQUE INDEX "${idx.name}" ON "${idx.table}" (${idx.columns}) ${idx.condition}`
-
-					await this.sequelize.query(indexQuery)
-					console.log(`✅ Created unique index: ${idx.name}`)
-					uniqueIndexesCreated++
-				} catch (error) {
-					if (
-						error.message.includes('could not create unique index') ||
-						error.message.includes('duplicate key')
-					) {
-						console.log(`❌ Unique index ${idx.name} failed due to duplicate data: ${error.message}`)
-						console.log(`💡 Hint: Clean duplicate data in ${idx.table} before creating unique constraint`)
-					} else {
-						console.log(`❌ Error creating unique index ${idx.name}: ${error.message}`)
-					}
-					uniqueIndexesSkipped++
-				}
-			}
-
-			console.log(`\n📈 Unique Index Creation Summary:`)
-			console.log(`✅ Successfully created: ${uniqueIndexesCreated} unique indexes`)
-			console.log(`⚠️  Skipped/Failed: ${uniqueIndexesSkipped} unique indexes`)
-			console.log(`📊 Total attempted: ${uniqueIndexConfigs.length} unique indexes`)
-
-			if (uniqueIndexesSkipped > 0) {
-				console.log('\n⚠️  Some unique indexes failed due to duplicate data:')
-				console.log('• Run duplicate data cleanup queries before creating unique constraints')
-				console.log('• Check for duplicate entries in affected tables')
-				console.log('• Unique constraints enforce data integrity but require clean data')
-			}
-
-			if (uniqueIndexesCreated > 0) {
-				console.log('\n🚀 Unique Index Benefits:')
-				console.log('• Data integrity enforced at database level')
-				console.log('• Prevents duplicate entries in business-critical columns')
-				console.log('• Tenant-aware uniqueness ensures proper multi-tenant isolation')
-			}
-		} catch (error) {
-			console.log(`❌ Unique index creation failed: ${error.message}`)
-			console.log('💡 Unique indexes can be created manually after data cleanup')
 		}
 	}
 
@@ -2086,6 +1936,9 @@ class ExistingTenantDataMigrator {
 
 				// Step 6: Create performance indexes
 				await this.createPerformanceIndexes()
+
+				// Step 7: Setup Citus distribution indexes (optional - safe for non-Citus environments)
+				await this.setupCitusDistribution()
 			} catch (error) {
 				await transaction.rollback()
 				throw error
