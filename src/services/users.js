@@ -204,6 +204,19 @@ module.exports = class UserHelper {
 		const createOrUpdateResult = isNewUser
 			? await this.#createUser(userExtensionData, userDetails.data.result.tenant_code)
 			: await this.#updateUser(userExtensionData, userDetails.data.result.tenant_code, targetHasMentorRole)
+
+		const isAMentor = userExtensionData.roles.some((role) => role.title == common.MENTOR_ROLE)
+
+		try {
+			if (!isNewUser && isAMentor) {
+				await cacheHelper.mentor.delete(tenantCode, updateData.userId)
+			} else if (!isNewUser) {
+				await cacheHelper.mentee.delete(tenantCode, updateData.userId)
+			}
+		} catch (error) {
+			//  not require to clear the chache
+		}
+
 		if (createOrUpdateResult.statusCode != httpStatusCode.ok) return createOrUpdateResult
 		else
 			return responses.successResponse({

@@ -452,7 +452,7 @@ module.exports = class EntityHelper {
 					await entityTypeCache.clearUserCachesForEntityType(
 						entityToDelete.organization_code,
 						tenantCode,
-						modelName,
+						deleteEntityTypesAndEntities.model_names,
 						entityToDelete.value
 					)
 				}

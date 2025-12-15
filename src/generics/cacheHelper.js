@@ -303,16 +303,18 @@ async function scanAndDeleteRedis(pattern, { batchSize = BATCH, unlink = true } 
 }
 async function scanAndDelete(pattern, { useInternal = false }) {
 	if (useInternal) {
-		scanAndDeleteInternal(pattern)
+		await scanAndDeleteInternal(pattern)
 	} else {
-		scanAndDeleteRedis(pattern)
+		await scanAndDeleteRedis(pattern)
 	}
 }
 
 async function scanAndDeleteInternal(pattern, { batchSize = BATCH } = {}) {
 	const matchingKeys = InternalCache.scanKeys(pattern)
 
-	if (!matchingKeys.length);
+	if (matchingKeys.length == 0) {
+		return []
+	}
 
 	let batch = []
 

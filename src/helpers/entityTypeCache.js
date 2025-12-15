@@ -499,13 +499,13 @@ async function clearUserCachesForEntityType(organizationCode, tenantCode, modelN
 
 		// Clear user extension caches
 		if (shouldClearProfileCaches) {
-			safeRun(cacheHelper.mentee.evictMentee(tenantCode))
-			safeRun(cacheHelper.mentor.evictMentor(tenantCode))
+			clearPromises.push(safeRun(cacheHelper.mentee.evictMentee(tenantCode)))
+			clearPromises.push(safeRun(cacheHelper.mentor.evictMentor(tenantCode)))
 		}
 
 		// Clear session caches
 		if (shouldClearSessionCaches) {
-			safeRun(cacheHelper.sessions.evictSessions(tenantCode))
+			clearPromises.push(safeRun(cacheHelper.sessions.evictSessions(tenantCode)))
 		}
 
 		await Promise.all(clearPromises)

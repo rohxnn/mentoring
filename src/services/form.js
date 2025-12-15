@@ -34,7 +34,7 @@ module.exports = class FormsHelper {
 			// delete form verions
 			try {
 				if (form) {
-					await cacheHelper.formVersions.delete(tenantCode, originalForm.organization_code || orgCode)
+					await cacheHelper.formVersions.delete(tenantCode, form.organization_code || orgCode)
 				}
 			} catch (error) {
 				console.warn('Failed to invalidate form form versions:', error)

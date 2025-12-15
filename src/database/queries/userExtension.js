@@ -729,24 +729,4 @@ module.exports = class MenteeExtensionQueries {
 			throw error
 		}
 	}
-
-	static async getAllUsersByTenantCode(tenantCode) {
-		try {
-			if (!Array.isArray(orgCodes) || orgCodes.length === 0) {
-				return []
-			}
-			const query = `
-			SELECT user_id
-			FROM ${common.materializedViewsPrefix + MenteeExtension.tableName}
-			WHERE tenant_code = :tenantCode
-		`
-			const results = await Sequelize.query(query, {
-				type: QueryTypes.SELECT,
-				replacements: { orgCodes, tenantCode },
-			})
-			return results
-		} catch (error) {
-			throw error
-		}
-	}
 }

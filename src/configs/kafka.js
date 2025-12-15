@@ -14,6 +14,7 @@ const rolechangeConsumer = require('@generics/kafka/consumers/rolechange')
 const createuserConsumer = require('@generics/kafka/consumers/createuser')
 const updateuserConsumer = require('@generics/kafka/consumers/updateuser')
 const organizationConsumer = require('@generics/kafka/consumers/organization')
+const readUser = require('@generics/kafka/consumers/readUser')
 
 module.exports = async () => {
 	const kafkaIps = process.env.KAFKA_URL.split(',')
@@ -94,6 +95,9 @@ async function startConsumer(kafkaClient) {
 					) {
 						response = await organizationConsumer.messageReceived(payload)
 					}
+					if (payload.eventType == 'readUser') {
+						response = await readUser.messageReceived(payload)
+					}
 				}
 				if (payload && topic === process.env.CLEAR_INTERNAL_CACHE) {
 					if (payload.type === 'CLEAR_INTERNAL_CACHE') {
@@ -105,7 +109,6 @@ async function startConsumer(kafkaClient) {
 				logger.error(`Error in Kafka message handler for topic ${topic}`, {
 					topic,
 					partition,
-					offset,
 					err: err?.stack || err?.message || String(err),
 				})
 			}
