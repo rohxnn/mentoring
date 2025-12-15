@@ -338,6 +338,8 @@ module.exports = {
 	},
 
 	down: async (queryInterface, Sequelize) => {
+		const transaction = await queryInterface.sequelize.transaction()
+
 		try {
 			console.log('🔄 Rolling back simplified tenant-code migration...')
 
@@ -372,7 +374,7 @@ module.exports = {
 			// Remove tenant_code columns
 			for (const tableName of allTables) {
 				try {
-					await queryInterface.removeColumn(tableName, 'tenant_code')
+					await queryInterface.removeColumn(tableName, 'tenant_code', { transaction })
 					console.log(`✅ Removed tenant_code from ${tableName}`)
 				} catch (error) {
 					console.log(`⚠️  Could not remove tenant_code from ${tableName}: ${error.message}`)
@@ -401,7 +403,7 @@ module.exports = {
 
 			for (const tableName of tablesWithOrgCode) {
 				try {
-					await queryInterface.removeColumn(tableName, 'organization_code')
+					await queryInterface.removeColumn(tableName, 'organization_code', { transaction })
 					console.log(`✅ Removed organization_code from ${tableName}`)
 				} catch (error) {
 					console.log(`⚠️  Could not remove organization_code from ${tableName}: ${error.message}`)
@@ -410,9 +412,11 @@ module.exports = {
 
 			// NOTE: user_name column removal handled by separate migration: 20251214000001-add-user-name-column.js
 
+			await transaction.commit()
 			console.log('✅ Rollback completed')
 		} catch (error) {
-			console.error('❌ Rollback failed:', error)
+			await transaction.rollback()
+			console.error('❌ Rollback failed, transaction rolled back:', error)
 			throw error
 		}
 	},

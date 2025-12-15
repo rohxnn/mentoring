@@ -41,6 +41,9 @@ module.exports = {
 					}
 				} else {
 					console.log(`⚠️  Table user_extensions does not exist, skipping`)
+					await transaction.commit()
+					console.log('\n🎯 USER_NAME COLUMN MIGRATION COMPLETED (table does not exist)')
+					return
 				}
 			} catch (error) {
 				console.log(`❌ Error adding user_name column: ${error.message}`)

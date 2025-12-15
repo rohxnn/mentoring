@@ -308,6 +308,8 @@ module.exports = {
 
 			// Drop composite primary keys and restore simple id-based primary keys
 			console.log('\n📝 Restoring original primary key constraints...')
+			const pkRestorationFailures = []
+
 			for (const tableName of allTables) {
 				try {
 					// Check if table exists
@@ -350,8 +352,23 @@ module.exports = {
 
 					console.log(`✅ Restored original primary key for ${tableName}: (${originalPK})`)
 				} catch (error) {
+					const failureInfo = { tableName, error: error.message }
+					pkRestorationFailures.push(failureInfo)
 					console.log(`⚠️  Could not restore primary key for ${tableName}: ${error.message}`)
 				}
+			}
+
+			// Check if there were any failures and handle them appropriately
+			if (pkRestorationFailures.length > 0) {
+				console.log(`\n❌ Primary key restoration failed for ${pkRestorationFailures.length} table(s):`)
+				pkRestorationFailures.forEach(({ tableName, error }) => {
+					console.log(`   - ${tableName}: ${error}`)
+				})
+				throw new Error(
+					`Primary key restoration failed for tables: ${pkRestorationFailures
+						.map((f) => f.tableName)
+						.join(', ')}`
+				)
 			}
 
 			await transaction.commit()

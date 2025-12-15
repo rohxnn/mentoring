@@ -196,6 +196,9 @@ module.exports = {
 					if (error.message.includes('distribution')) {
 						console.log(`   🔍 Debug: This may be a distribution column mismatch`)
 					}
+
+					// Fail fast - trigger transaction rollback
+					throw error
 				}
 			}
 

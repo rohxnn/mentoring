@@ -755,11 +755,15 @@ class ExistingTenantDataMigrator {
 			console.log(`🔄 Processing ${name} with default values (only where tenant_code is NULL/empty)...`)
 
 			const setClauses = []
+			const replacements = {}
+
 			if (columns.includes('tenant_code')) {
-				setClauses.push(`tenant_code = '${this.defaultTenantCode}'`)
+				setClauses.push(`tenant_code = :tenantCode`)
+				replacements.tenantCode = this.defaultTenantCode
 			}
 			if (columns.includes('organization_code')) {
-				setClauses.push(`organization_code = '${this.defaultOrgCode}'`)
+				setClauses.push(`organization_code = :orgCode`)
+				replacements.orgCode = this.defaultOrgCode
 			}
 			setClauses.push('updated_at = NOW()')
 
@@ -768,7 +772,7 @@ class ExistingTenantDataMigrator {
 				SET ${setClauses.join(', ')}
 				WHERE tenant_code IS NULL OR tenant_code = ''`,
 				{
-					replacements: {},
+					replacements,
 					transaction,
 				}
 			)
