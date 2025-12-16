@@ -110,7 +110,8 @@ class TenantDataFiller {
 				.on('end', () => {
 					console.log(`✅ Loaded ${this.orgLookupCache.size} organization mappings from CSV`)
 					if (this.orgLookupCache.size === 0) {
-						throw new Error('CSV file is empty or contains no valid data mappings')
+						reject(new Error('CSV file is empty or contains no valid data mappings'))
+						return
 					}
 					resolve()
 				})
@@ -263,49 +264,13 @@ class TenantDataFiller {
 		console.log('🔗 Restoring foreign key constraints after data migration...')
 
 		let restoredCount = 0
-		let skippedCitusIncompatible = 0
 		let unexpectedErrors = 0
 
-		// Check if Citus extension is available
-		let citusEnabled = false
-		try {
-			const citusCheck = await this.sequelize.query(
-				`SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'citus')`,
-				{ type: Sequelize.QueryTypes.SELECT, transaction }
-			)
-			citusEnabled = citusCheck[0].exists
-			if (citusEnabled) {
-				console.log('🌐 Citus detected - using tenant-aware constraint restoration')
-			}
-		} catch (error) {
-			console.log('📍 Standard PostgreSQL detected - using standard constraint restoration')
-		}
+		console.log('📍 Using standard PostgreSQL constraint restoration')
 
 		for (const fk of droppedConstraints) {
 			try {
-				// Skip certain constraints that are incompatible with Citus distribution
-				if (citusEnabled && this.isCitusIncompatibleConstraint(fk)) {
-					console.log(
-						`⚠️  Skipping Citus-incompatible constraint: ${fk.constraint_name} (does not include tenant_code)`
-					)
-					skippedCitusIncompatible++
-					continue
-				}
-
-				// Special handling for tenant-aware constraints in Citus
-				if (citusEnabled && this.isTransformableToTenantAware(fk)) {
-					const success = await this.restoreTenantAwareForeignKey(fk, transaction)
-					if (success) {
-						console.log(`✅ Restored tenant-aware FK: ${fk.constraint_name} on ${fk.table_name}`)
-						restoredCount++
-					} else {
-						console.log(`⚠️  Could not restore as tenant-aware FK: ${fk.constraint_name}`)
-						skippedCitusIncompatible++
-					}
-					continue
-				}
-
-				// Generic restoration for standard PostgreSQL or non-tenant constraints
+				// Restore foreign key constraint
 				await this.sequelize.query(
 					`ALTER TABLE "${fk.table_name}" 
 					 ADD CONSTRAINT "${fk.constraint_name}" 
@@ -318,36 +283,19 @@ class TenantDataFiller {
 				console.log(`✅ Restored FK: ${fk.constraint_name} on ${fk.table_name}`)
 				restoredCount++
 			} catch (error) {
-				// Check if this is an expected Citus-incompatibility error
-				const isCitusError = this.isCitusCompatibilityError(error, fk)
-
-				if (isCitusError) {
-					// Expected Citus incompatibility - log at info level
-					console.log(`ℹ️  Skipping FK restoration due to Citus incompatibility: ${fk.constraint_name}`)
-					console.log(`   Context: ${error.message.substring(0, 100)}...`)
-					skippedCitusIncompatible++
-				} else {
-					// Unexpected error - log as actual failure
-					console.log(`❌ UNEXPECTED ERROR restoring FK ${fk.constraint_name}:`)
-					console.log(`   Message: ${error.message}`)
-					console.log(`   Table: ${fk.table_name}, Constraint: ${fk.constraint_name}`)
-					console.log(`   Stack: ${error.stack}`)
-					unexpectedErrors++
-				}
+				// Log unexpected errors
+				console.log(`❌ ERROR restoring FK ${fk.constraint_name}:`)
+				console.log(`   Message: ${error.message}`)
+				console.log(`   Table: ${fk.table_name}, Constraint: ${fk.constraint_name}`)
+				unexpectedErrors++
 			}
 		}
 
 		this.stats.constraintsRestored = restoredCount
 		console.log(`✅ Restored: ${restoredCount} foreign key constraints`)
-		if (skippedCitusIncompatible > 0) {
-			console.log(`⚠️  Skipped: ${skippedCitusIncompatible} Citus-incompatible constraints`)
-			console.log(
-				`💡 Note: Skipped constraints don't include tenant_code and are incompatible with distributed tables`
-			)
-		}
 		if (unexpectedErrors > 0) {
-			console.log(`🚨 UNEXPECTED ERRORS: ${unexpectedErrors} foreign key restoration failures`)
-			console.log(`⚠️  These are NOT expected Citus incompatibilities - review the errors above`)
+			console.log(`🚨 ERRORS: ${unexpectedErrors} foreign key restoration failures`)
+			console.log(`⚠️  Review the errors above for constraint restoration issues`)
 			// Consider throwing if there are critical unexpected errors
 			throw new Error(`Foreign key restoration failed with ${unexpectedErrors} unexpected errors`)
 		}

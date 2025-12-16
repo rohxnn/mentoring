@@ -334,7 +334,6 @@ module.exports = {
 				{ table: 'file_uploads', name: 'idx_file_uploads_tenant_type_dist', columns: 'tenant_code, type' },
 				{ table: 'issues', name: 'idx_issues_tenant_user_dist', columns: 'tenant_code, user_id' },
 				{ table: 'modules', name: 'idx_modules_tenant_code_dist', columns: 'tenant_code, code' },
-				{ table: 'question_sets', name: 'idx_questions_tenant_set_dist', columns: 'tenant_code, code' },
 				{ table: 'permissions', name: 'unique_code', columns: 'code' },
 				{ table: 'report_types', name: 'idx_report_types_tenant_title_dist', columns: 'tenant_code, title' },
 			]
@@ -517,6 +516,7 @@ module.exports = {
 				'idx_questions_tenant_set_dist',
 				'idx_report_role_mapping_tenant_role_dist',
 				'idx_report_types_tenant_title_dist',
+				'unique_code',
 			]
 
 			console.log('\n📝 Dropping distribution indexes...')

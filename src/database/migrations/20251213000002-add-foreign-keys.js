@@ -239,6 +239,7 @@ module.exports = {
 				'fk_post_session_details_session_id',
 				'fk_session_attendees_session_id',
 				'fk_resources_session_id',
+				'fk_role_permission_mapping_permission_id',
 			]
 
 			console.log('\n📝 Dropping foreign key constraints...')
@@ -262,6 +263,8 @@ module.exports = {
 						actualTableName = 'post_session_details'
 					else if (constraintName === 'fk_session_attendees_session_id') actualTableName = 'session_attendees'
 					else if (constraintName === 'fk_resources_session_id') actualTableName = 'resources'
+					else if (constraintName === 'fk_role_permission_mapping_permission_id')
+						actualTableName = 'role_permission_mapping'
 
 					if (actualTableName) {
 						await queryInterface.sequelize.query(
