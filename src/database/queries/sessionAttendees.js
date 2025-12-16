@@ -112,14 +112,35 @@ exports.findAll = async (filter, tenantCode, options = {}) => {
 
 exports.unEnrollAllAttendeesOfSessions = async (sessionIds, tenantCode) => {
 	try {
+		if (!tenantCode) {
+			throw new Error('tenantCode is required')
+		}
+		const recordsToDelete = await SessionAttendee.findAll({
+			where: {
+				session_id: { [Op.in]: sessionIds },
+				tenant_code: tenantCode,
+			},
+			raw: true, // optional, returns plain objects
+		})
+
+		// If nothing found
+		if (!recordsToDelete.length) {
+			return {
+				deletedCount: 0,
+				deletedRecords: [],
+			}
+		}
+
 		const destroyedCount = await SessionAttendee.destroy({
 			where: {
 				session_id: { [Op.in]: sessionIds },
 				tenant_code: tenantCode,
 			},
 		})
-
-		return destroyedCount
+		return {
+			deletedCount: destroyedCount,
+			deletedRecords: recordsToDelete,
+		}
 	} catch (error) {
 		return error
 	}
