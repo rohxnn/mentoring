@@ -12,7 +12,7 @@ module.exports = {
 			// Note: Always using composite foreign keys to match composite primary keys from Migration 1
 			console.log('📋 Using composite foreign keys to match Migration 1 primary key structure')
 
-			// Foreign key configurations - FIXED to match composite primary keys from Migration 1
+			// Complete foreign key configurations with CASCADE constraints for data flexibility
 			const foreignKeyConfigs = [
 				{
 					table: 'entities',
@@ -45,6 +45,14 @@ module.exports = {
 					refTable: 'sessions',
 					refColumns: 'id, tenant_code',
 					description: 'resources(session_id, tenant_code) -> sessions(id, tenant_code)',
+				},
+				{
+					table: 'role_permission_mapping',
+					constraint: 'fk_role_permission_mapping_permission_id',
+					columns: 'permission_id',
+					refTable: 'permissions',
+					refColumns: 'id',
+					description: 'role_permission_mapping(permission_id) -> permissions(id)',
 				},
 			]
 
@@ -179,8 +187,8 @@ module.exports = {
 						 ADD CONSTRAINT ${fkConfig.constraint} 
 						 FOREIGN KEY (${fkConfig.columns}) 
 						 REFERENCES ${fkConfig.refTable}(${fkConfig.refColumns}) 
-						 ON DELETE RESTRICT 
-						 ON UPDATE RESTRICT`,
+						 ON DELETE CASCADE 
+						 ON UPDATE NO ACTION`,
 						{ transaction }
 					)
 

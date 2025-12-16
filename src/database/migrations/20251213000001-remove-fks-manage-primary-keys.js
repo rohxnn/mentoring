@@ -26,7 +26,7 @@ module.exports = {
 				organization_extension: 'tenant_code, organization_code, organization_id',
 				post_session_details: 'tenant_code, session_id',
 				user_extensions: 'tenant_code, user_id',
-				question_sets: 'code, tenant_code',
+				question_sets: 'id, tenant_code',
 				questions: 'id, tenant_code',
 				report_queries: 'tenant_code, id, organization_code',
 				report_role_mapping: 'tenant_code, id',

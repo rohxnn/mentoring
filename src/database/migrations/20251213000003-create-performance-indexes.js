@@ -144,9 +144,9 @@ module.exports = {
 				},
 				{
 					table: 'user_extensions',
-					name: 'idx_user_extensions_user_name',
-					columns: 'user_name',
-					condition: 'WHERE user_name IS NOT NULL',
+					name: 'idx_user_extensions_username',
+					columns: 'username',
+					condition: 'WHERE username IS NOT NULL',
 				},
 			]
 
@@ -285,7 +285,7 @@ module.exports = {
 				'idx_user_extensions_user_tenant',
 				'idx_user_extensions_email',
 				'idx_user_extensions_phone',
-				'idx_user_extensions_user_name',
+				'idx_user_extensions_username',
 			]
 
 			console.log('\n📝 Dropping performance indexes...')
