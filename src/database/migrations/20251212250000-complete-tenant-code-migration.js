@@ -177,7 +177,7 @@ module.exports = {
 				}
 			}
 
-			// NOTE: user_name column addition moved to separate migration: 20251213000000-add-user-name-column.js
+			// NOTE: username column addition moved to separate migration: 20251213000000-add-user-name-column.js
 
 			console.log('\n📝 PHASE 3: Populating default values for tenant_code...')
 			console.log('='.repeat(50))
@@ -410,7 +410,7 @@ module.exports = {
 				}
 			}
 
-			// NOTE: user_name column removal handled by separate migration: 20251213000000-add-user-name-column.js
+			// NOTE: username column removal handled by separate migration: 20251213000000-add-user-name-column.js
 
 			await transaction.commit()
 			console.log('✅ Rollback completed')
