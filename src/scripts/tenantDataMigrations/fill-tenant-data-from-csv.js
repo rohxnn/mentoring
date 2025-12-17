@@ -68,19 +68,37 @@ class TenantDataFiller {
 
 			withEntityTypeId: [{ name: 'entities', columns: ['tenant_code'], entityTypeIdColumn: 'entity_type_id' }],
 
-			withUserId: [
+			withUserIdTenantOnly: [
 				{ name: 'sessions', columns: ['tenant_code'], userIdColumn: 'created_by' },
 				{ name: 'feedbacks', columns: ['tenant_code'], userIdColumn: 'user_id' },
 				{ name: 'connection_requests', columns: ['tenant_code'], userIdColumn: 'created_by' },
 				{ name: 'connections', columns: ['tenant_code'], userIdColumn: 'created_by' },
 				{ name: 'resources', columns: ['tenant_code'], userIdColumn: 'created_by' },
 				{ name: 'session_request', columns: ['tenant_code'], userIdColumn: 'created_by' },
+			],
+
+			withUserIdBoth: [
 				{ name: 'issues', columns: ['tenant_code', 'organization_code'], userIdColumn: 'user_id' },
 				{ name: 'question_sets', columns: ['tenant_code', 'organization_code'], userIdColumn: 'created_by' },
 				{ name: 'questions', columns: ['tenant_code', 'organization_code'], userIdColumn: 'created_by' },
 			],
 
-			withSessionId: [{ name: 'session_attendees', columns: ['tenant_code'], sessionIdColumn: 'session_id' }],
+			withSessionId: [
+				{ name: 'session_attendees', columns: ['tenant_code'], sessionIdColumn: 'session_id' },
+				{ name: 'post_session_details', columns: ['tenant_code'], sessionIdColumn: 'session_id' },
+			],
+
+			withReportCode: [
+				{
+					name: 'report_role_mapping',
+					columns: ['tenant_code', 'organization_code'],
+					reportCodeColumn: 'report_code',
+				},
+			],
+
+			withReportTypeTitle: [
+				{ name: 'report_types', columns: ['tenant_code', 'organization_code'], titleColumn: 'title' },
+			],
 		}
 	}
 
@@ -459,16 +477,16 @@ class TenantDataFiller {
 		}
 	}
 
-	async processTablesWithUserId(transaction) {
-		console.log('\n🔄 PHASE 4: Processing tables with user_id using user_extensions lookup...')
+	async processTablesWithUserIdTenantOnly(transaction) {
+		console.log('\n🔄 PHASE 4A: Processing tables with user_id (tenant_code only) using user_extensions lookup...')
 		console.log('='.repeat(70))
 
-		for (const tableConfig of this.tableConfigs.withUserId) {
-			await this.processUserIdTable(transaction, tableConfig)
+		for (const tableConfig of this.tableConfigs.withUserIdTenantOnly) {
+			await this.processUserIdTenantOnlyTable(transaction, tableConfig)
 		}
 	}
 
-	async processUserIdTable(transaction, tableConfig) {
+	async processUserIdTenantOnlyTable(transaction, tableConfig) {
 		const { name, columns, userIdColumn } = tableConfig
 
 		try {
@@ -486,9 +504,9 @@ class TenantDataFiller {
 				return
 			}
 
-			console.log(`🔄 Processing ${name} with user_id lookup...`)
+			console.log(`🔄 Processing ${name} with user_id lookup (tenant_code only)...`)
 
-			// Only update where matching user_extensions row exists
+			// Only update tenant_code for tables that only have tenant_code column
 			const [_, metadata] = await this.sequelize.query(
 				`UPDATE "${name}" 
 				 SET tenant_code = ue.tenant_code, updated_at = NOW()
@@ -503,7 +521,61 @@ class TenantDataFiller {
 
 			const affected = metadata?.rowCount || 0
 			this.stats.successfulUpdates += affected
-			console.log(`✅ ${name}: ${affected} rows updated using user_extensions lookup`)
+			console.log(`✅ ${name}: ${affected} rows updated using user_extensions lookup (tenant_code only)`)
+		} catch (error) {
+			console.log(`❌ Error processing ${name}: ${error.message}`)
+			this.stats.failedUpdates++
+			throw error
+		}
+	}
+
+	async processTablesWithUserIdBoth(transaction) {
+		console.log(
+			'\n🔄 PHASE 4B: Processing tables with user_id (tenant_code + organization_code) using user_extensions lookup...'
+		)
+		console.log('='.repeat(70))
+
+		for (const tableConfig of this.tableConfigs.withUserIdBoth) {
+			await this.processUserIdBothTable(transaction, tableConfig)
+		}
+	}
+
+	async processUserIdBothTable(transaction, tableConfig) {
+		const { name, columns, userIdColumn } = tableConfig
+
+		try {
+			const tableExists = await this.sequelize.query(
+				`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = :tableName)`,
+				{
+					replacements: { tableName: name },
+					type: Sequelize.QueryTypes.SELECT,
+					transaction,
+				}
+			)
+
+			if (!tableExists[0].exists) {
+				console.log(`⚠️  Table ${name} does not exist, skipping`)
+				return
+			}
+
+			console.log(`🔄 Processing ${name} with user_id lookup (tenant_code + organization_code)...`)
+
+			// Update both tenant_code and organization_code for tables that have both columns
+			const [_, metadata] = await this.sequelize.query(
+				`UPDATE "${name}" 
+				 SET tenant_code = ue.tenant_code, organization_code = ue.organization_code, updated_at = NOW()
+				 FROM user_extensions ue
+				 WHERE "${name}"."${userIdColumn}" = ue.user_id
+				 AND "${name}"."${userIdColumn}" IS NOT NULL
+				 AND ue.tenant_code IS NOT NULL`,
+				{
+					transaction,
+				}
+			)
+
+			const affected = metadata?.rowCount || 0
+			this.stats.successfulUpdates += affected
+			console.log(`✅ ${name}: ${affected} rows updated using user_extensions lookup (both columns)`)
 		} catch (error) {
 			console.log(`❌ Error processing ${name}: ${error.message}`)
 			this.stats.failedUpdates++
@@ -561,6 +633,126 @@ class TenantDataFiller {
 		}
 	}
 
+	async processTablesWithReportCode(transaction) {
+		console.log('\n🔄 PHASE 6: Processing tables with report_code using reports lookup...')
+		console.log('='.repeat(70))
+
+		for (const tableConfig of this.tableConfigs.withReportCode) {
+			await this.processReportCodeTable(transaction, tableConfig)
+		}
+	}
+
+	async processReportCodeTable(transaction, tableConfig) {
+		const { name, columns, reportCodeColumn } = tableConfig
+
+		try {
+			const tableExists = await this.sequelize.query(
+				`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = :tableName)`,
+				{
+					replacements: { tableName: name },
+					type: Sequelize.QueryTypes.SELECT,
+					transaction,
+				}
+			)
+
+			if (!tableExists[0].exists) {
+				console.log(`⚠️  Table ${name} does not exist, skipping`)
+				return
+			}
+
+			console.log(`🔄 Processing ${name} with report_code lookup...`)
+
+			const setClauses = []
+			if (columns.includes('tenant_code')) {
+				setClauses.push('tenant_code = r.tenant_code')
+			}
+			if (columns.includes('organization_code')) {
+				setClauses.push('organization_code = r.organization_code')
+			}
+			setClauses.push('updated_at = NOW()')
+
+			// Only update where reports has a tenant_code (only when lookup exists)
+			const [_, metadata] = await this.sequelize.query(
+				`UPDATE "${name}" 
+				 SET ${setClauses.join(', ')}
+				 FROM reports r
+				 WHERE "${name}"."${reportCodeColumn}" = r.code
+				 AND r.tenant_code IS NOT NULL`,
+				{
+					transaction,
+				}
+			)
+
+			const affected = metadata?.rowCount || 0
+			this.stats.successfulUpdates += affected
+			console.log(`✅ ${name}: ${affected} rows updated using reports lookup`)
+		} catch (error) {
+			console.log(`❌ Error processing ${name}: ${error.message}`)
+			this.stats.failedUpdates++
+			throw error
+		}
+	}
+
+	async processTablesWithReportTypeTitle(transaction) {
+		console.log('\n🔄 PHASE 7: Processing tables with report_type_title using reports lookup...')
+		console.log('='.repeat(70))
+
+		for (const tableConfig of this.tableConfigs.withReportTypeTitle) {
+			await this.processReportTypeTitleTable(transaction, tableConfig)
+		}
+	}
+
+	async processReportTypeTitleTable(transaction, tableConfig) {
+		const { name, columns, titleColumn } = tableConfig
+
+		try {
+			const tableExists = await this.sequelize.query(
+				`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = :tableName)`,
+				{
+					replacements: { tableName: name },
+					type: Sequelize.QueryTypes.SELECT,
+					transaction,
+				}
+			)
+
+			if (!tableExists[0].exists) {
+				console.log(`⚠️  Table ${name} does not exist, skipping`)
+				return
+			}
+
+			console.log(`🔄 Processing ${name} with report_type_title lookup...`)
+
+			const setClauses = []
+			if (columns.includes('tenant_code')) {
+				setClauses.push('tenant_code = r.tenant_code')
+			}
+			if (columns.includes('organization_code')) {
+				setClauses.push('organization_code = r.organization_code')
+			}
+			setClauses.push('updated_at = NOW()')
+
+			// Only update where reports has a tenant_code (only when lookup exists)
+			const [_, metadata] = await this.sequelize.query(
+				`UPDATE "${name}" 
+				 SET ${setClauses.join(', ')}
+				 FROM reports r
+				 WHERE "${name}"."${titleColumn}" = r.report_type_title
+				 AND r.tenant_code IS NOT NULL`,
+				{
+					transaction,
+				}
+			)
+
+			const affected = metadata?.rowCount || 0
+			this.stats.successfulUpdates += affected
+			console.log(`✅ ${name}: ${affected} rows updated using reports lookup`)
+		} catch (error) {
+			console.log(`❌ Error processing ${name}: ${error.message}`)
+			this.stats.failedUpdates++
+			throw error
+		}
+	}
+
 	async validateDataIntegrity(transaction) {
 		console.log('\n🔍 Validating data integrity after filling...')
 		console.log('='.repeat(50))
@@ -569,8 +761,12 @@ class TenantDataFiller {
 		const allTableConfigs = [
 			...this.tableConfigs.withOrgId,
 			this.tableConfigs.userExtensions,
-			...this.tableConfigs.withUserId,
+			...this.tableConfigs.withEntityTypeId,
+			...this.tableConfigs.withUserIdTenantOnly,
+			...this.tableConfigs.withUserIdBoth,
 			...this.tableConfigs.withSessionId,
+			...this.tableConfigs.withReportCode,
+			...this.tableConfigs.withReportTypeTitle,
 		]
 
 		for (const tableConfig of allTableConfigs) {
@@ -681,8 +877,11 @@ class TenantDataFiller {
 				await this.processTablesWithOrgId(transaction) // PHASE 1
 				await this.processUserExtensions(transaction) // PHASE 2
 				await this.processTablesWithEntityTypeId(transaction) // PHASE 3
-				await this.processTablesWithUserId(transaction) // PHASE 4
+				await this.processTablesWithUserIdTenantOnly(transaction) // PHASE 4A
+				await this.processTablesWithUserIdBoth(transaction) // PHASE 4B
 				await this.processTablesWithSessionId(transaction) // PHASE 5
+				await this.processTablesWithReportCode(transaction) // PHASE 6
+				await this.processTablesWithReportTypeTitle(transaction) // PHASE 7
 
 				// Validate data integrity
 				const validationResult = await this.validateDataIntegrity(transaction)
