@@ -17,7 +17,7 @@ const DatabaseConnectionManager = require('./db-connection-utils')
  * REQUIREMENTS:
  *   - DEFAULT_TENANT_CODE environment variable
  *   - DEFAULT_ORGANISATION_CODE environment variable
- *   - data/sample_data_codes.csv file (optional - if present, used for CSV-based overwrites)
+ *   - data/data_codes.csv file (optional - if present, used for CSV-based overwrites)
  *   - Database must be migrated first (run migrations before this script)
  */
 
@@ -105,9 +105,9 @@ class TenantDataFiller {
 	async loadLookupData() {
 		console.log('🔄 Loading lookup data from CSV file...')
 
-		const csvPath = path.join(__dirname, '../../data/sample_data_codes.csv')
+		const csvPath = path.join(__dirname, '../../data/data_codes.csv')
 		if (!fs.existsSync(csvPath)) {
-			throw new Error('CSV file not found: sample_data_codes.csv is required for data filling')
+			throw new Error('CSV file not found: data_codes.csv is required for data filling')
 		}
 
 		return new Promise((resolve, reject) => {
