@@ -23,7 +23,12 @@ module.exports = class QuestionsSet {
 
 	async create(req) {
 		try {
-			const createQuestionSet = await questionSetService.create(req.body, req.decodedToken)
+			const createQuestionSet = await questionSetService.create(
+				req.body,
+				req.decodedToken,
+				req.decodedToken.tenant_code,
+				req.decodedToken.organization_code
+			)
 
 			return createQuestionSet
 		} catch (error) {
@@ -42,7 +47,12 @@ module.exports = class QuestionsSet {
 
 	async update(req) {
 		try {
-			const updateQuestionsSet = await questionSetService.update(req.params.id, req.body, req.decodedToken)
+			const updateQuestionsSet = await questionSetService.update(
+				req.params.id,
+				req.body,
+				req.decodedToken,
+				req.decodedToken.tenant_code
+			)
 			return updateQuestionsSet
 		} catch (error) {
 			return error
@@ -60,7 +70,11 @@ module.exports = class QuestionsSet {
 
 	async read(req) {
 		try {
-			const questionsSetData = await questionSetService.read(req.params.id, req.body.code)
+			const questionsSetData = await questionSetService.read(
+				req.params.id,
+				req.body.code,
+				req.decodedToken.tenant_code
+			)
 			return questionsSetData
 		} catch (error) {
 			return error

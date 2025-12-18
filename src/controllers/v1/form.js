@@ -18,9 +18,13 @@ module.exports = class Form {
 	 */
 
 	async create(req) {
-		const params = req.body
 		try {
-			const createdForm = await formsService.create(params, req.decodedToken.organization_id)
+			const createdForm = await formsService.create(
+				req.body,
+				req.decodedToken.organization_id,
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
+			)
 			return createdForm
 		} catch (error) {
 			return error
@@ -36,9 +40,13 @@ module.exports = class Form {
 	 */
 
 	async update(req) {
-		const params = req.body
 		try {
-			const updatedForm = await formsService.update(req.params.id, params, req.decodedToken.organization_id)
+			const updatedForm = await formsService.update(
+				req.params.id,
+				req.body,
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
+			)
 			return updatedForm
 		} catch (error) {
 			return error
@@ -54,13 +62,17 @@ module.exports = class Form {
 	 */
 
 	async read(req) {
-		const params = req.body
 		try {
 			if (!req.params.id && Object.keys(req.body).length === 0) {
-				const form = await formsService.readAllFormsVersion()
+				const form = await formsService.readAllFormsVersion(req.decodedToken.tenant_code)
 				return form
 			} else {
-				const form = await formsService.read(req.params.id, params, req.decodedToken.organization_id)
+				const form = await formsService.read(
+					req.params.id,
+					req.body,
+					req.decodedToken.organization_code,
+					req.decodedToken.tenant_code
+				)
 				return form
 			}
 		} catch (error) {

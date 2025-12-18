@@ -9,6 +9,16 @@ module.exports = (sequelize, DataTypes) => {
 				primaryKey: true,
 				type: DataTypes.STRING,
 			},
+			organization_code: {
+				type: DataTypes.STRING,
+				allowNull: false,
+				primaryKey: true,
+			},
+			tenant_code: {
+				type: DataTypes.STRING,
+				allowNull: false,
+				primaryKey: true,
+			},
 			session_visibility_policy: { type: DataTypes.STRING },
 			mentor_visibility_policy: { type: DataTypes.STRING },
 			external_session_visibility_policy: { type: DataTypes.STRING },

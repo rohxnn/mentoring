@@ -5900,6 +5900,24 @@
 						"description": "### Create Default Rule\n\nThis endpoint allows the creation of a default rule for mentoring.\n\n#### Request Body\n\n- `type` (string): The type of the rule.\n- `target_field` (string): The target field for the rule.\n- `is_target_from_sessions_mentor` (boolean): Indicates if the target is from sessions mentor.\n- `requester_field` (string): The requester field for the rule.\n- `field_configs` (null): Field configurations (if any).\n- `matching_operator` (string): The matching operator for the rule.\n- `requester_roles` (array of strings): The roles of the requester.\n- `role_config.exclude` (boolean): Indicates if the role should be excluded.\n    \n\n#### Response\n\nThe response is in JSON format with the following schema:\n\n``` json\n{\n  \"type\": \"object\",\n  \"properties\": {\n    \"responseCode\": {\"type\": \"string\"},\n    \"message\": {\"type\": \"string\"},\n    \"result\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"created_at\": {\"type\": \"string\"},\n        \"updated_at\": {\"type\": \"string\"},\n        \"id\": {\"type\": \"integer\"},\n        \"type\": {\"type\": \"string\"},\n        \"target_field\": {\"type\": \"string\"},\n        \"is_target_from_sessions_mentor\": {\"type\": \"boolean\"},\n        \"requester_field\": {\"type\": \"string\"},\n        \"field_configs\": {\"type\": \"null\"},\n        \"matching_operator\": {\"type\": \"string\"},\n        \"requester_roles\": {\n          \"type\": \"array\",\n          \"items\": {\"type\": \"string\"}\n        },\n        \"role_config\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"exclude\": {\"type\": \"boolean\"}\n          }\n        },\n        \"created_by\": {\"type\": \"integer\"},\n        \"updated_by\": {\"type\": \"integer\"},\n        \"organization_id\": {\"type\": \"integer\"},\n        \"deleted_at\": {\"type\": [\"string\", \"null\"]}\n      }\n    },\n    \"meta\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"formsVersion\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"id\": {\"type\": \"integer\"},\n              \"type\": {\"type\": \"string\"},\n              \"version\": {\"type\": \"integer\"}\n            }\n          }\n        },\n        \"correlation\": {\"type\": \"string\"},\n        \"meetingPlatform\": {\"type\": \"string\"}\n      }\n    }\n  }\n}\n\n ```"
 					},
 					"response": []
+				},
+				{
+					"name": "healthCheck",
+					"item": [
+						{
+							"name": "health",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{MentoringBaseUrl}}mentoring/health",
+									"host": ["{{MentoringBaseUrl}}mentoring"],
+									"path": ["health"]
+								}
+							},
+							"response": []
+						}
+					]
 				}
 			]
 		},

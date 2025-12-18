@@ -19,11 +19,23 @@ module.exports = class Notifications {
 
 	async emailCronJob(req) {
 		try {
+			// For scheduler jobs, tenant_code comes from request body since there's no decoded token
+			// For regular API calls, it comes from decoded token
+			const tenantCode = req.body.tenant_code || (req.decodedToken && req.decodedToken.tenant_code)
+
+			if (!tenantCode) {
+				return {
+					statusCode: httpStatusCode.bad_request,
+					message: 'TENANT_CODE_REQUIRED',
+				}
+			}
+
 			// Make a call to notification service
 			notificationsService.sendNotification(
 				req.body.job_id,
 				req.body.email_template_code,
-				req.body.job_creator_org_id ? req.body.job_creator_org_id : ''
+				req.body.job_creator_org_id ? req.body.job_creator_org_id : '',
+				tenantCode
 			)
 			return {
 				statusCode: httpStatusCode.ok,

@@ -40,6 +40,7 @@ module.exports = class Sessions {
 					req.decodedToken.id,
 					req.method,
 					req.decodedToken.organization_id,
+					req.decodedToken.organization_code,
 					notifyUser,
 					req.decodedToken.tenant_code
 				)
@@ -54,6 +55,7 @@ module.exports = class Sessions {
 					req.body,
 					req.decodedToken.id,
 					req.decodedToken.organization_id,
+					req.decodedToken.organization_code,
 					isAMentor(req.decodedToken.roles),
 					notifyUser,
 					req.decodedToken.tenant_code
@@ -84,7 +86,8 @@ module.exports = class Sessions {
 				req.decodedToken ? isAMentor(req.decodedToken.roles) : '',
 				req.query,
 				req.decodedToken.roles,
-				req.decodedToken.organization_id
+				req.decodedToken.organization_code,
+				req.decodedToken ? req.decodedToken.tenant_code : ''
 			)
 			return sessionDetails
 		} catch (error) {
@@ -115,7 +118,8 @@ module.exports = class Sessions {
 				req.query,
 				isAMentor(req.decodedToken.roles),
 				req.decodedToken.roles,
-				req.decodedToken.organization_id
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
 			)
 			return sessionDetails
 		} catch (error) {
@@ -134,7 +138,7 @@ module.exports = class Sessions {
 
 	async share(req) {
 		try {
-			const shareSessionDetails = await sessionService.share(req.params.id)
+			const shareSessionDetails = await sessionService.share(req.params.id, req.decodedToken.tenant_code)
 			return shareSessionDetails
 		} catch (error) {
 			return error
@@ -154,18 +158,17 @@ module.exports = class Sessions {
 
 	async enroll(req) {
 		try {
-			const isSelfEnrolled = true
-			const session = {}
 			const enrolledSession = await sessionService.enroll(
 				req.params.id,
 				req.decodedToken,
 				req.headers['timezone'],
 				isAMentor(req.decodedToken.roles),
-				isSelfEnrolled,
-				session,
+				true,
+				{},
 				null,
-				req.decodedToken.roles,
-				req.decodedToken.organization_id
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code,
+				req.decodedToken.roles
 			)
 			return enrolledSession
 		} catch (error) {
@@ -185,7 +188,17 @@ module.exports = class Sessions {
 
 	async unEnroll(req) {
 		try {
-			const unEnrolledSession = await sessionService.unEnroll(req.params.id, req.decodedToken)
+			const tenantCode = req.decodedToken.tenant_code
+			const orgCode = req.decodedToken.organization_code
+			const unEnrolledSession = await sessionService.unEnroll(
+				req.params.id,
+				req.decodedToken,
+				true, // isSelfUnenrollment
+				{}, // session
+				null, // mentorId
+				tenantCode,
+				orgCode
+			)
 			return unEnrolledSession
 		} catch (error) {
 			return error
@@ -226,8 +239,22 @@ module.exports = class Sessions {
 
 	async completed(req) {
 		try {
+			let tenantCode = req.decodedToken?.tenant_code
+			let orgCode = req.decodedToken?.organization_code
+			// Enhanced: Check query parameters first (from BBB callback with enhanced isolation)
+			if (!tenantCode && req.query.tenantCode) {
+				tenantCode = req.query.tenantCode
+			}
+
+			// For scheduled jobs or BBB callbacks without tokens, get tenant_code from session
+			if (!tenantCode) {
+				const sessionData = await sessionService.getSessionTenantCode(req.params.id, tenantCode)
+				tenantCode = sessionData?.tenant_code
+			}
+
 			const isBBB = req.query.source == common.BBB_VALUE ? true : false
-			const sessionsCompleted = await sessionService.completed(req.params.id, isBBB)
+			const sessionsCompleted = await sessionService.completed(req.params.id, isBBB, tenantCode, orgCode)
+
 			return sessionsCompleted
 		} catch (error) {
 			return error
@@ -245,7 +272,11 @@ module.exports = class Sessions {
 
 	async getRecording(req) {
 		try {
-			const recording = await sessionService.getRecording(req.params.id)
+			const recording = await sessionService.getRecording(
+				req.params.id,
+				req.decodedToken.tenant_code,
+				req.decodedToken.organization_code
+			)
 			return recording
 		} catch (error) {
 			return error
@@ -264,7 +295,13 @@ module.exports = class Sessions {
 
 	async feedback(req) {
 		try {
-			const sessionsFeedBack = await sessionService.feedback(req.params.id, req.body)
+			const sessionsFeedBack = await sessionService.feedback(
+				req.params.id,
+				req.body,
+				req.decodedToken.id,
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
+			)
 			return sessionsFeedBack
 		} catch (error) {
 			return error
@@ -282,10 +319,12 @@ module.exports = class Sessions {
 	 */
 
 	async updateRecordingUrl(req) {
-		const internalMeetingId = req.params.id
-		const recordingUrl = req.body.recordingUrl
 		try {
-			const sessionUpdated = await sessionService.updateRecordingUrl(internalMeetingId, recordingUrl)
+			const sessionUpdated = await sessionService.updateRecordingUrl(
+				req.params.id,
+				req.body.recordingUrl,
+				req.decodedToken.tenant_code
+			)
 			return sessionUpdated
 		} catch (error) {
 			return error
@@ -304,7 +343,14 @@ module.exports = class Sessions {
 	 */
 	async bulkUpdateMentorNames(req) {
 		try {
-			const sessionUpdated = await sessionService.bulkUpdateMentorNames(req.body.mentor_id, req.body.mentor_name)
+			// For internal calls, extract from req.body instead of req.decodedToken
+			const sessionUpdated = await sessionService.bulkUpdateMentorNames(
+				req.body.mentor_id,
+				req.body.mentor_name,
+				req.body.user_id,
+				req.body.organization_code,
+				req.body.tenant_code
+			)
 			return sessionUpdated
 		} catch (error) {
 			return error
@@ -325,7 +371,13 @@ module.exports = class Sessions {
 
 	async enrolledMentees(req) {
 		try {
-			return await sessionService.enrolledMentees(req.params.id, req.query, req.decodedToken.id)
+			return await sessionService.enrolledMentees(
+				req.params.id,
+				req.query,
+				req.decodedToken.id,
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
+			)
 		} catch (error) {
 			throw error
 		}
@@ -345,7 +397,11 @@ module.exports = class Sessions {
 			const sessionDetails = await sessionService.addMentees(
 				req.params.id, // session id
 				req.body.mentees, // Array of mentee ids
-				req.headers['timezone']
+				req.headers['timezone'],
+				req.decodedToken.id,
+				req.decodedToken.organization_id, // organizationId
+				req.decodedToken.organization_code, // organizationCode
+				req.decodedToken.tenant_code
 			)
 			return sessionDetails
 		} catch (error) {
@@ -366,7 +422,9 @@ module.exports = class Sessions {
 		try {
 			const sessionDetails = await sessionService.removeMentees(
 				req.params.id, // session id
-				req.body.mentees // Array of mentee ids
+				req.body.mentees, // Array of mentee ids
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
 			)
 			return sessionDetails
 		} catch (error) {
@@ -383,10 +441,17 @@ module.exports = class Sessions {
 	 */
 	async bulkSessionCreate(req) {
 		try {
+			const organizationCode =
+				req.decodedToken.organization_code ||
+				(req.decodedToken.organization_codes && req.decodedToken.organization_codes[0])
+
 			const sessionUploadRes = await sessionService.bulkSessionCreate(
 				req.body.file_path,
-				req.decodedToken,
-				req.decodedToken.tenant_code
+				req.decodedToken.id,
+				organizationCode,
+				req.decodedToken.tenant_code,
+				req.decodedToken.organizations[0].id,
+				req.decodedToken
 			)
 			return sessionUploadRes
 		} catch (error) {
@@ -403,7 +468,10 @@ module.exports = class Sessions {
 	 */
 	async getSampleCSV(req) {
 		try {
-			const downloadUrlResponse = await sessionService.getSampleCSV(req.decodedToken.organization_id)
+			const downloadUrlResponse = await sessionService.getSampleCSV(
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
+			)
 			return downloadUrlResponse
 		} catch (error) {
 			return error
@@ -419,22 +487,28 @@ module.exports = class Sessions {
 	 */
 	async removeAllSessions(req) {
 		try {
-			if (req.body.mentorIds && req.body.orgId)
+			if (req.body.mentorIds && req.body.orgCode)
 				return responses.failureResponse({
 					message: 'Specify either mentorIds or orgId but not both.',
 					statusCode: httpStatusCode.bad_request,
 					responseCode: 'CLIENT_ERROR',
 				})
-			else if (!req.body.mentorIds && !req.body.orgId)
+			else if (!req.body.mentorIds && !req.body.orgCode)
 				return responses.failureResponse({
-					message: 'Specify at-least mentorIds or orgId.',
+					message: 'Specify at-least mentorIds or orgCode.',
 					statusCode: httpStatusCode.bad_request,
 					responseCode: 'CLIENT_ERROR',
 				})
-			const removedSessionsResponse = await sessionService.removeAllSessions({
-				mentorIds: req.body.mentorIds,
-				orgId: req.body.orgId,
-			})
+
+			const removedSessionsResponse = await sessionService.removeAllSessions(
+				{
+					mentorIds: req.body.mentorIds,
+					orgCode: req.body.orgCode,
+				},
+				req.body.user_id,
+				req.body.organization_code,
+				req.body.tenant_code
+			)
 			return removedSessionsResponse
 		} catch (error) {
 			return error

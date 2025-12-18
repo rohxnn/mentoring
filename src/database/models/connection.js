@@ -43,6 +43,10 @@ module.exports = (sequelize, DataTypes) => {
 			created_by: {
 				type: DataTypes.STRING,
 			},
+			tenant_code: {
+				type: DataTypes.STRING,
+				allowNull: false,
+			},
 		},
 		{
 			sequelize,

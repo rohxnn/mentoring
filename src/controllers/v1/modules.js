@@ -12,7 +12,12 @@ module.exports = class modules {
 
 	async create(req) {
 		try {
-			const createdModules = await modulesService.create(req.body)
+			const createdModules = await modulesService.create(
+				req.body,
+				req.decodedToken.id,
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
+			)
 			return createdModules
 		} catch (error) {
 			return error
@@ -29,7 +34,13 @@ module.exports = class modules {
 
 	async update(req) {
 		try {
-			const updatedModules = await modulesService.update(req.params.id, req.body)
+			const updatedModules = await modulesService.update(
+				req.params.id,
+				req.body,
+				req.decodedToken.id,
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
+			)
 			return updatedModules
 		} catch (error) {
 			return error
@@ -48,7 +59,14 @@ module.exports = class modules {
 
 	async list(req) {
 		try {
-			const modulesDetails = await modulesService.list(req.pageNo, req.pageSize, req.searchText)
+			const modulesDetails = await modulesService.list(
+				req.pageNo,
+				req.pageSize,
+				req.searchText,
+				req.decodedToken.id,
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
+			)
 			return modulesDetails
 		} catch (error) {
 			return error
@@ -65,7 +83,12 @@ module.exports = class modules {
 
 	async delete(req) {
 		try {
-			const modulesDelete = await modulesService.delete(req.params.id)
+			const modulesDelete = await modulesService.delete(
+				req.params.id,
+				req.decodedToken.id,
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
+			)
 			return modulesDelete
 		} catch (error) {
 			return error

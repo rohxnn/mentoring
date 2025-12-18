@@ -3,10 +3,12 @@ const responses = require('@helpers/responses')
 const mappingQueries = require('@database/queries/reportRoleMapping')
 
 module.exports = class ReportsHelper {
-	static async createMapping(data) {
+	static async createMapping(data, organizationCode, organizationId, tenantCode) {
 		try {
+			data.organization_code = organizationCode
+			data.organization_id = organizationId
 			// Attempt to create a new report directly
-			const mappingCreation = await mappingQueries.createReportRoleMapping(data)
+			const mappingCreation = await mappingQueries.createReportRoleMapping(data, tenantCode)
 			return responses.successResponse({
 				statusCode: httpStatusCode.created,
 				message: 'REPORT_MAPPING_CREATED_SUCCESS',
@@ -29,9 +31,13 @@ module.exports = class ReportsHelper {
 		}
 	}
 
-	static async getMapping(code) {
+	static async getMapping(code, organizationCode, tenantCode) {
 		try {
-			const readMapping = await mappingQueries.findReportRoleMappingByReportCode(code)
+			const readMapping = await mappingQueries.findReportRoleMappingByReportCode(
+				code,
+				[tenantCode],
+				[organizationCode]
+			)
 			if (!readMapping) {
 				return responses.failureResponse({
 					message: 'REPORT_MAPPING_NOT_FOUND',
@@ -49,9 +55,9 @@ module.exports = class ReportsHelper {
 		}
 	}
 
-	static async updateMapping(filter, updateData) {
+	static async updateMapping(filter, updateData, tenantCode) {
 		try {
-			const updateMapping = await mappingQueries.updateReportRoleMappings(filter, updateData)
+			const updateMapping = await mappingQueries.updateReportRoleMappings(filter, updateData, tenantCode)
 			if (!updateMapping) {
 				return responses.failureResponse({
 					message: 'REPORT_MAPPING_UPDATE_FAILED',
@@ -69,9 +75,9 @@ module.exports = class ReportsHelper {
 		}
 	}
 
-	static async deleteMapping(id) {
+	static async deleteMapping(id, userId, organizationId, tenantCode) {
 		try {
-			const deletedRows = await mappingQueries.deleteReportRoleMappingById(id)
+			const deletedRows = await mappingQueries.deleteReportRoleMappingById(id, tenantCode)
 			if (deletedRows === 0) {
 				return responses.failureResponse({
 					message: 'REPORT_MAPPING_DELETION_FAILED',

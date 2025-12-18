@@ -1,97 +1,60 @@
 const NotificationTemplate = require('@database/models/index').NotificationTemplate
-const { getDefaultOrgId } = require('@helpers/getDefaultOrgId')
 const { Op } = require('sequelize')
+const { getDefaults } = require('@helpers/getDefaultOrgId')
 const httpStatusCode = require('@generics/http-status')
 const responses = require('@helpers/responses')
+// Removed cacheHelper import to break circular dependency
 
 module.exports = class NotificationTemplateData {
-	static async findOneEmailTemplate(code, orgId) {
+	static async findOne(filter, tenantCode, options = {}) {
 		try {
-			const defaultOrgId = await getDefaultOrgId()
-			if (!defaultOrgId) {
-				return responses.failureResponse({
-					message: 'DEFAULT_ORG_ID_NOT_SET',
-					statusCode: httpStatusCode.bad_request,
-					responseCode: 'CLIENT_ERROR',
-				})
-			}
-			/**If data exists for both `orgId` and `defaultOrgId`, the query will return the first matching records
-			 * we will filter required data based on condition from it
-			 * if orgId passed -> get template defined by particular org or get default org template
-			 */
-			const filter = {
-				code: code,
-				type: 'email',
-				status: 'active',
-				organization_id: orgId ? { [Op.or]: [orgId, defaultOrgId] } : defaultOrgId,
-			}
+			// Direct database query - cache logic moved to caller level
 
-			let templateData = await NotificationTemplate.findAll({
-				where: filter,
-				raw: true,
-			})
+			filter.tenant_code = tenantCode
 
-			// If there are multiple results, find the one matching orgId
-			templateData = templateData.find((template) => template.organization_id === orgId) || templateData[0]
+			// Safe merge: tenant filtering cannot be overridden by options.where
+			const { where: optionsWhere, ...otherOptions } = options
 
-			if (templateData && templateData.email_header) {
-				const header = await this.getEmailHeader(templateData.email_header)
-				if (header && header.body) {
-					templateData.body = header.body + templateData.body
-				}
-			}
-
-			if (templateData && templateData.email_footer) {
-				const footer = await this.getEmailFooter(templateData.email_footer)
-				if (footer && footer.body) {
-					templateData.body += footer.body
-				}
-			}
-			return templateData
-		} catch (error) {
-			return error
-		}
-	}
-
-	static async getEmailHeader(header) {
-		try {
-			const headerData = await NotificationTemplate.findOne({
+			const result = await NotificationTemplate.findOne({
 				where: {
-					code: header,
-					type: 'emailHeader',
-					status: 'active',
+					...optionsWhere, // Allow additional where conditions
+					...filter, // But tenant filtering takes priority
 				},
+				...otherOptions,
 				raw: true,
 			})
 
-			return headerData
+			// Cache logic removed - cache managed at caller level
+
+			return result
 		} catch (error) {
 			return error
 		}
 	}
 
-	static async getEmailFooter(footer) {
+	static async findTemplatesByFilter(filter, options = {}) {
 		try {
-			const footerData = await NotificationTemplate.findOne({
+			const whereClause = {
+				...filter,
+			}
+
+			// Handle array values for organization_code and tenant_code
+			if (Array.isArray(filter.organization_code)) {
+				whereClause.organization_code = { [Op.in]: filter.organization_code }
+			}
+			if (Array.isArray(filter.tenant_code)) {
+				whereClause.tenant_code = { [Op.in]: filter.tenant_code }
+			}
+
+			// Safe merge: tenant filtering cannot be overridden by options.where
+			const { where: optionsWhere, ...otherOptions } = options
+
+			return await NotificationTemplate.findAll({
 				where: {
-					code: footer,
-					type: 'emailFooter',
-					status: 'active',
+					...optionsWhere, // Allow additional where conditions
+					...whereClause, // But tenant filtering takes priority
 				},
-				raw: true,
-			})
-
-			return footerData
-		} catch (error) {
-			return error
-		}
-	}
-
-	static async findOne(filter, options = {}) {
-		try {
-			return await NotificationTemplate.findOne({
-				where: filter,
-				...options,
+				...otherOptions,
 				raw: true,
 			})
 		} catch (error) {
@@ -99,11 +62,19 @@ module.exports = class NotificationTemplateData {
 		}
 	}
 
-	static async updateTemplate(filter, update, options = {}) {
+	static async updateTemplate(filter, update, tenantCode, options = {}) {
 		try {
+			filter.tenant_code = tenantCode
+
+			// Safe merge: tenant filtering cannot be overridden by options.where
+			const { where: optionsWhere, ...otherOptions } = options
+
 			const template = await NotificationTemplate.update(update, {
-				where: filter,
-				...options,
+				where: {
+					...optionsWhere, // Allow additional where conditions
+					...filter, // But tenant filtering takes priority
+				},
+				...otherOptions,
 				individualHooks: true,
 			})
 
@@ -113,41 +84,166 @@ module.exports = class NotificationTemplateData {
 		}
 	}
 
-	static async findAllNotificationTemplates(filter, options = {}) {
+	static async create(data, tenantCode) {
 		try {
-			const templates = await NotificationTemplate.findAll({
-				where: filter,
-				...options,
-				raw: true,
-			})
-
-			// templates.forEach(async(template) => {
-			// 	if (template.email_header) {
-			// 		const header = await this.getEmailHeader(template.email_header)
-			// 		if (header && header.body) {
-			// 			template['body'] = header.body + template['body']
-			// 		}
-			// 	}
-
-			// 	if (template.email_footer) {
-			// 		const footer = await this.getEmailFooter(template.email_footer)
-			// 		if (footer && footer.body) {
-			// 			template['body'] = template['body'] + footer.body
-			// 		}
-			// 	}
-			// })
-
-			return templates
+			data.tenant_code = tenantCode
+			return await NotificationTemplate.create(data)
 		} catch (error) {
 			return error
 		}
 	}
 
-	static async create(data) {
+	static async findOneEmailTemplate(code, orgCodeParam, tenantCodeParam) {
 		try {
-			return await NotificationTemplate.create(data)
+			// Direct database query - cache logic moved to caller level
+
+			const defaults = await getDefaults()
+			if (!defaults.orgCode) {
+				return responses.failureResponse({
+					message: 'DEFAULT_ORG_CODE_NOT_SET',
+					statusCode: httpStatusCode.bad_request,
+					responseCode: 'CLIENT_ERROR',
+				})
+			}
+			if (!defaults.tenantCode) {
+				return responses.failureResponse({
+					message: 'DEFAULT_TENANT_CODE_NOT_SET',
+					statusCode: httpStatusCode.bad_request,
+					responseCode: 'CLIENT_ERROR',
+				})
+			}
+
+			// Handle different parameter formats that callers might use
+			let orgCodes = []
+			let tenantCodes = []
+
+			// Parse organization codes
+			if (Array.isArray(orgCodeParam)) {
+				orgCodes = orgCodeParam
+			} else if (orgCodeParam && typeof orgCodeParam === 'object' && orgCodeParam[Op.in]) {
+				orgCodes = orgCodeParam[Op.in]
+			} else if (orgCodeParam) {
+				orgCodes = [orgCodeParam]
+			}
+			// Add default org code
+			if (!orgCodes.includes(defaults.orgCode)) {
+				orgCodes.push(defaults.orgCode)
+			}
+
+			// Parse tenant codes
+			if (Array.isArray(tenantCodeParam)) {
+				tenantCodes = tenantCodeParam
+			} else if (tenantCodeParam && typeof tenantCodeParam === 'object' && tenantCodeParam[Op.in]) {
+				tenantCodes = tenantCodeParam[Op.in]
+			} else if (tenantCodeParam) {
+				tenantCodes = [tenantCodeParam]
+			}
+			// Add default tenant code
+			if (!tenantCodes.includes(defaults.tenantCode)) {
+				tenantCodes.push(defaults.tenantCode)
+			}
+
+			// Build filter for template search
+			const filter = {
+				code: code,
+				type: 'email',
+				status: 'active',
+				organization_code: { [Op.in]: orgCodes },
+				tenant_code: { [Op.in]: tenantCodes },
+			}
+
+			let templateData = await NotificationTemplate.findAll({
+				where: filter,
+				raw: true,
+			})
+
+			if (!templateData || templateData.length === 0) {
+				return null
+			}
+
+			// Business logic: Prefer current tenant/org over defaults
+			// Priority: exact match > org match > tenant match > default
+			let selectedTemplate = templateData[0] // fallback
+
+			// Try to find exact match first
+			const exactMatch = templateData.find(
+				(template) =>
+					template.organization_code === (Array.isArray(orgCodeParam) ? orgCodeParam[0] : orgCodeParam) &&
+					template.tenant_code === (Array.isArray(tenantCodeParam) ? tenantCodeParam[0] : tenantCodeParam)
+			)
+			if (exactMatch) {
+				selectedTemplate = exactMatch
+			} else {
+				// Try org match
+				const orgMatch = templateData.find(
+					(template) =>
+						template.organization_code === (Array.isArray(orgCodeParam) ? orgCodeParam[0] : orgCodeParam)
+				)
+				if (orgMatch) {
+					selectedTemplate = orgMatch
+				} else {
+					// Try tenant match
+					const tenantMatch = templateData.find(
+						(template) =>
+							template.tenant_code ===
+							(Array.isArray(tenantCodeParam) ? tenantCodeParam[0] : tenantCodeParam)
+					)
+					if (tenantMatch) {
+						selectedTemplate = tenantMatch
+					}
+				}
+			}
+
+			// Compose template with header and footer
+			if (selectedTemplate && selectedTemplate.email_header) {
+				const header = await this.getEmailHeader(selectedTemplate.email_header)
+				if (header && header.body) {
+					selectedTemplate.body = header.body + selectedTemplate.body
+				}
+			}
+
+			if (selectedTemplate && selectedTemplate.email_footer) {
+				const footer = await this.getEmailFooter(selectedTemplate.email_footer)
+				if (footer && footer.body) {
+					selectedTemplate.body += footer.body
+				}
+			}
+
+			// Cache logic removed - cache managed at caller level
+
+			return selectedTemplate
 		} catch (error) {
 			return error
+		}
+	}
+
+	static async getEmailHeader(headerCode) {
+		try {
+			return await NotificationTemplate.findOne({
+				where: {
+					code: headerCode,
+					type: 'emailHeader',
+					status: 'active',
+				},
+				raw: true,
+			})
+		} catch (error) {
+			return null
+		}
+	}
+
+	static async getEmailFooter(footerCode) {
+		try {
+			return await NotificationTemplate.findOne({
+				where: {
+					code: footerCode,
+					type: 'emailFooter',
+					status: 'active',
+				},
+				raw: true,
+			})
+		} catch (error) {
+			return null
 		}
 	}
 }

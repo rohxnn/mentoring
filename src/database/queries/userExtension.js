@@ -3,6 +3,7 @@ const { QueryTypes } = require('sequelize')
 const sequelize = require('sequelize')
 const Sequelize = require('@database/models/index').sequelize
 const common = require('@constants/common')
+const utils = require('@generics/utils')
 const _ = require('lodash')
 const { Op } = require('sequelize')
 const emailEncryption = require('@utils/emailEncryption')
@@ -12,7 +13,7 @@ module.exports = class MenteeExtensionQueries {
 		try {
 			return await Object.keys(MenteeExtension.rawAttributes)
 		} catch (error) {
-			return error
+			throw error
 		}
 	}
 
@@ -20,23 +21,29 @@ module.exports = class MenteeExtensionQueries {
 		try {
 			return await MenteeExtension.name
 		} catch (error) {
-			return error
+			throw error
 		}
 	}
-	static async createMenteeExtension(data) {
+	static async createMenteeExtension(data, tenantCode) {
 		try {
+			data.tenant_code = tenantCode
 			return await MenteeExtension.create(data, { returning: true })
 		} catch (error) {
 			throw error
 		}
 	}
 
-	static async updateMenteeExtension(userId, data, options = {}, customFilter = {}) {
+	static async updateMenteeExtension(userId, data, options = {}, customFilter = {}, tenantCode) {
 		try {
 			if (data.user_id) {
 				delete data['user_id']
 			}
-			const whereClause = _.isEmpty(customFilter) ? { user_id: userId } : customFilter
+			let whereClause
+			if (_.isEmpty(customFilter)) {
+				whereClause = { user_id: userId, tenant_code: tenantCode }
+			} else {
+				whereClause = { ...customFilter, tenant_code: tenantCode }
+			}
 
 			// If `meta` is included in `data`, use `jsonb_set` to merge changes safely
 			if (data.meta) {
@@ -60,17 +67,44 @@ module.exports = class MenteeExtensionQueries {
 				delete data.meta
 			}
 
+			// Safe merge: tenant filtering cannot be overridden by options.where
+			const { where: optionsWhere, ...otherOptions } = options
+
 			return await MenteeExtension.update(data, {
-				where: whereClause,
-				...options,
+				where: {
+					...optionsWhere, // Allow additional where conditions
+					...whereClause, // But tenant filtering takes priority
+				},
+				...otherOptions,
 			})
 		} catch (error) {
-			console.log(error)
 			throw error
 		}
 	}
 
-	static async addVisibleToOrg(organizationId, newRelatedOrgs, options = {}) {
+	static async addVisibleToOrg(organizationId, newRelatedOrgs, tenantCode, options = {}) {
+		// Safe merge: tenant filtering cannot be overridden by options.where
+		const { where: optionsWhere, ...otherOptions } = options
+
+		const whereClause1 = {
+			organization_id: organizationId,
+			[Op.or]: [
+				{
+					[Op.not]: {
+						visible_to_organizations: {
+							[Op.contains]: newRelatedOrgs,
+						},
+					},
+				},
+				{
+					visible_to_organizations: {
+						[Op.is]: null,
+					},
+				},
+			],
+			tenant_code: tenantCode,
+		}
+
 		// Update user extension and concat related org to the org id
 
 		const newRelatedOrgsArray = Array.from(newRelatedOrgs.values())
@@ -85,6 +119,7 @@ module.exports = class MenteeExtensionQueries {
 			},
 			{
 				where: {
+					tenant_code: tenantCode,
 					organization_id: organizationId,
 					[Op.or]: [
 						{
@@ -101,7 +136,7 @@ module.exports = class MenteeExtensionQueries {
 						},
 					],
 				},
-				...options,
+				...otherOptions,
 				individualHooks: true,
 			}
 		)
@@ -114,6 +149,7 @@ module.exports = class MenteeExtensionQueries {
 			},
 			{
 				where: {
+					tenant_code: tenantCode,
 					organization_id: {
 						[Op.in]: newRelatedOrgsArray,
 					},
@@ -133,12 +169,12 @@ module.exports = class MenteeExtensionQueries {
 					],
 				},
 				individualHooks: true,
-				...options,
+				...otherOptions,
 			}
 		)
 	}
 
-	static async removeVisibleToOrg(orgId, elementsToRemove) {
+	static async removeVisibleToOrg(orgId, elementsToRemove, tenantCode) {
 		const organizationUpdateQuery = `
 		  UPDATE "user_extensions"
 		  SET "visible_to_organizations" = COALESCE((
@@ -146,11 +182,11 @@ module.exports = class MenteeExtensionQueries {
 			FROM unnest("visible_to_organizations") AS elem
 			WHERE elem NOT IN (:elementsToRemove)
 		  ), '{}')
-		  WHERE organization_id = :orgId
+		  WHERE organization_id = :orgId AND tenant_code = :tenantCode
 		`
 
 		await Sequelize.query(organizationUpdateQuery, {
-			replacements: { orgId, elementsToRemove },
+			replacements: { orgId, elementsToRemove, tenantCode },
 			type: Sequelize.QueryTypes.UPDATE,
 		})
 		const relatedOrganizationUpdateQuery = `
@@ -160,50 +196,47 @@ module.exports = class MenteeExtensionQueries {
 			FROM unnest("visible_to_organizations") AS elem
 			WHERE elem NOT IN (:orgId)
 		  ), '{}')
-		  WHERE organization_id IN (:elementsToRemove)
+		  WHERE organization_id IN (:elementsToRemove) AND tenant_code = :tenantCode
 		`
 
 		await Sequelize.query(relatedOrganizationUpdateQuery, {
-			replacements: { elementsToRemove, orgId },
+			replacements: { elementsToRemove, orgId, tenantCode },
 			type: Sequelize.QueryTypes.UPDATE,
 		})
 	}
-	static async getMenteeExtension(userId, attributes = [], unScoped = false) {
+	static async getMenteeExtension(userId, attributes = [], unScoped = false, tenantCode) {
 		try {
 			const queryOptions = {
-				where: { user_id: userId },
+				where: {
+					user_id: userId,
+					tenant_code: tenantCode,
+				},
 				raw: true,
 			}
+
 			// If attributes are passed update query
 			if (attributes.length > 0) {
 				queryOptions.attributes = attributes
 			}
+
 			let mentee
 			if (unScoped) {
 				mentee = await MenteeExtension.unscoped().findOne(queryOptions)
 			} else {
 				mentee = await MenteeExtension.findOne(queryOptions)
 			}
+
 			if (mentee && mentee.email) {
 				mentee.email = await emailEncryption.decrypt(mentee.email.toLowerCase())
 			}
+
 			return mentee
 		} catch (error) {
 			throw error
 		}
 	}
 
-	static async deleteMenteeExtension(userId, force = false) {
-		try {
-			return await MenteeExtension.destroy({
-				where: { user_id: userId },
-				...(force ? { force: true } : {}),
-			})
-		} catch (error) {
-			throw error
-		}
-	}
-	static async removeMenteeDetails(userId) {
+	static async removeMenteeDetails(userId, tenantCode) {
 		try {
 			const modelAttributes = MenteeExtension.rawAttributes
 
@@ -239,21 +272,42 @@ module.exports = class MenteeExtensionQueries {
 			return await MenteeExtension.update(fieldsToNullify, {
 				where: {
 					user_id: userId,
+					tenant_code: tenantCode,
 				},
 			})
 		} catch (error) {
-			console.error('An error occurred:', error)
 			throw error
 		}
 	}
 
-	static async getUsersByUserIds(ids, options = {}, unscoped = false) {
+	static async deleteMenteeExtension(userId, tenantCode) {
 		try {
+			// Completely delete the mentee extension record
+			const result = await MenteeExtension.destroy({
+				where: {
+					user_id: userId,
+					tenant_code: tenantCode,
+				},
+			})
+
+			return result
+		} catch (error) {
+			throw error
+		}
+	}
+
+	static async getUsersByUserIds(ids, options = {}, tenantCode, unscoped = false) {
+		try {
+			// Safe merge: tenant filtering cannot be overridden by options.where
+			const { where: optionsWhere, ...otherOptions } = options
+
 			const query = {
 				where: {
+					...optionsWhere, // Allow additional where conditions
 					user_id: ids,
+					tenant_code: tenantCode, // Tenant filtering takes priority
 				},
-				...options,
+				...otherOptions,
 				returning: true,
 				raw: true,
 			}
@@ -272,7 +326,6 @@ module.exports = class MenteeExtensionQueries {
 
 			return result
 		} catch (error) {
-			console.log(error)
 			throw error
 		}
 	}
@@ -320,10 +373,11 @@ module.exports = class MenteeExtensionQueries {
 				filterClause = filterClause.startsWith('AND') ? filterClause : 'AND' + filterClause
 			}
 
+			const viewName = utils.getTenantViewName(tenantCode, MenteeExtension.tableName)
 			let query = `
 				SELECT ${projectionClause}
 				FROM
-					${common.materializedViewsPrefix + MenteeExtension.tableName}
+					${viewName}
 				WHERE
 					${userFilterClause}
 					${filterClause}
@@ -356,7 +410,7 @@ module.exports = class MenteeExtensionQueries {
 			const countQuery = `
 			SELECT count(*) AS "count"
 			FROM
-				${common.materializedViewsPrefix + MenteeExtension.tableName}
+				${viewName}
 			WHERE
 				${userFilterClause}
 				${filterClause}
@@ -377,9 +431,9 @@ module.exports = class MenteeExtensionQueries {
 			throw error
 		}
 	}
-	static async getMenteeExtensions(userIds, attributes = []) {
+	static async getMenteeExtensions(userIds, attributes = [], tenantCode) {
 		try {
-			const queryOptions = { where: { user_id: { [Op.in]: userIds } }, raw: true }
+			const queryOptions = { where: { user_id: { [Op.in]: userIds }, tenant_code: tenantCode }, raw: true }
 			// If attributes are passed update query
 			if (attributes.length > 0) {
 				queryOptions.attributes = attributes
@@ -390,11 +444,12 @@ module.exports = class MenteeExtensionQueries {
 			throw error
 		}
 	}
-	static async findOneFromView(userId) {
+	static async findOneFromView(userId, tenantCode) {
 		try {
+			const viewName = utils.getTenantViewName(tenantCode, MenteeExtension.tableName)
 			let query = `
 				SELECT *
-				FROM ${common.materializedViewsPrefix + MenteeExtension.tableName}
+				FROM ${viewName}
 				WHERE user_id = :userId
 				LIMIT 1
 			`
@@ -405,7 +460,7 @@ module.exports = class MenteeExtensionQueries {
 
 			return user.length > 0 ? user[0] : null
 		} catch (error) {
-			return error
+			throw error
 		}
 	}
 
@@ -418,7 +473,8 @@ module.exports = class MenteeExtensionQueries {
 		additionalProjectionClause = '',
 		returnOnlyUserId,
 		searchText = '',
-		defaultFilter = ''
+		defaultFilter = '',
+		tenantCode
 	) {
 		try {
 			const excludeUserIds = ids.length === 0
@@ -438,6 +494,9 @@ module.exports = class MenteeExtensionQueries {
 			if (excludeUserIds && filter.query.length === 0) {
 				saasFilterClause = saasFilterClause.replace('AND ', '') // Remove "AND" if excludeUserIds is true and filter is empty
 			}
+
+			// Tenant filtering enabled - materialized view now includes tenant_code column
+			const tenantFilterClause = tenantCode ? `AND tenant_code = :tenantCode` : ''
 
 			let projectionClause = `
 				user_id,
@@ -462,48 +521,68 @@ module.exports = class MenteeExtensionQueries {
 				filterClause = filterClause.startsWith('AND') ? filterClause : 'AND ' + filterClause
 			}
 
-			let query = `
-				SELECT ${projectionClause}
-				FROM ${common.materializedViewsPrefix + MenteeExtension.tableName}
-				WHERE
-					${userFilterClause}
-					${filterClause}
-					${saasFilterClause}
-					${additionalFilter}
-					${defaultFilter}
-				`
+			// Build WHERE clause dynamically to avoid empty conditions
+			const whereConditions = [
+				userFilterClause,
+				filterClause,
+				saasFilterClause,
+				additionalFilter,
+				defaultFilter,
+				tenantFilterClause,
+			].filter((condition) => condition && condition.trim() !== '')
 
-			if (limit != null && page != null) {
-				query += `
-			     OFFSET :offset
-			     LIMIT :limit
-			   `
+			let whereClause = ''
+			if (whereConditions.length > 0) {
+				// Clean up AND prefixes and join conditions
+				const cleanedConditions = whereConditions.map((condition, index) => {
+					if (index === 0) {
+						// First condition shouldn't have AND prefix
+						return condition.replace(/^AND\s+/, '')
+					}
+					// Subsequent conditions should have AND prefix
+					return condition.startsWith('AND ') ? condition : `AND ${condition}`
+				})
+				whereClause = `WHERE ${cleanedConditions.join(' ')}`
 			}
+
+			const viewName = utils.getTenantViewName(tenantCode, MenteeExtension.tableName)
+			const query = `
+				SELECT ${projectionClause}
+				FROM ${viewName}
+				${whereClause}
+				OFFSET :offset
+				LIMIT :limit
+			`
 
 			const replacements = {
 				...filter.replacements, // Add filter parameters to replacements
 				search: `%${searchText}%`,
 			}
 
+			// Add tenantCode to replacements if it's being used in the query
+			if (tenantCode) {
+				replacements.tenantCode = tenantCode
+			}
+
+			// Always provide offset and limit replacements since they're in the query
 			if (page !== null && limit !== null) {
 				replacements.offset = limit * (page - 1)
 				replacements.limit = limit
+			} else {
+				// Provide defaults if page/limit not specified
+				replacements.offset = 0
+				replacements.limit = 5 // Default limit
 			}
 
-			const results = await Sequelize.query(query, {
+			let results = await Sequelize.query(query, {
 				type: QueryTypes.SELECT,
 				replacements: replacements,
 			})
 
 			const countQuery = `
 				SELECT COUNT(*) AS count
-				FROM ${common.materializedViewsPrefix + MenteeExtension.tableName}
-				WHERE
-					${userFilterClause}
-					${filterClause}
-					${saasFilterClause}
-					${additionalFilter}
-					${defaultFilter}
+				FROM ${viewName}
+				${whereClause}
 			`
 
 			const count = await Sequelize.query(countQuery, {
@@ -519,16 +598,21 @@ module.exports = class MenteeExtensionQueries {
 			throw error
 		}
 	}
-	static async getAllUsersByIds(ids) {
+	static async getAllUsersByIds(ids, tenantCode) {
 		try {
 			const excludeUserIds = ids.length === 0
 			const userFilterClause = excludeUserIds ? '' : `user_id IN (${ids.map((id) => `'${id}'`).join(',')})`
+			// No longer need tenant filtering since we use tenant-specific views
 
+			// Since we're using tenant-specific views, no tenant filtering needed
+			const whereClause = userFilterClause || '1=1' // Default to all records if no user filter
+
+			const viewName = utils.getTenantViewName(tenantCode, MenteeExtension.tableName)
 			const query = `
 				SELECT *
-				FROM ${common.materializedViewsPrefix + MenteeExtension.tableName}
+				FROM ${viewName}
 				WHERE
-					${userFilterClause}
+					${whereClause}
 				`
 
 			const results = await Sequelize.query(query, {
@@ -553,18 +637,22 @@ module.exports = class MenteeExtensionQueries {
 	 * @example
 	 * const emailIds = ['user1@example.com', 'user2@example.com'];
 	 * const users = await getUsersByEmailIds(emailIds);
-	 * console.log(users); // Outputs an array of user records matching the provided email IDs.
+
 	 */
-	static async getUsersByEmailIds(emailIds) {
+	static async getUsersByEmailIds(emailIds, tenantCode) {
 		try {
-			const userFilterClause =
+			const emailFilterClause =
 				emailIds.length === 0 ? '' : `email IN (${emailIds.map((id) => `'${id}'`).join(',')})`
 
+			// Since we're using tenant-specific views, no tenant filtering needed
+			const whereClause = emailFilterClause || '1=1' // Default to all records if no email filter
+
+			const viewName = utils.getTenantViewName(tenantCode, MenteeExtension.tableName)
 			const query = `
 				SELECT *
-				FROM ${common.materializedViewsPrefix + MenteeExtension.tableName}
+				FROM ${viewName}
 				WHERE
-					${userFilterClause}
+					${whereClause}
 				`
 
 			const results = await Sequelize.query(query, {
@@ -576,19 +664,64 @@ module.exports = class MenteeExtensionQueries {
 		}
 	}
 
-	static async getAllUsersByOrgId(orgIds) {
+	/**
+	 * Get distinct tenant codes from UserExtension table
+	 * @method
+	 * @name getDistinctTenantCodes
+	 * @description Fetches all distinct tenant codes from the UserExtension table.
+	 * This method replaces external API calls to User Service for getting tenant list.
+	 * @returns {Promise<Array>} - Array of objects with 'code' property containing tenant codes
+	 *
+	 * @example
+	 * const tenants = await getDistinctTenantCodes();
+	 * // Returns: [{ code: 'tenant1' }, { code: 'tenant2' }]
+	 */
+	static async getDistinctTenantCodes() {
 		try {
-			if (!Array.isArray(orgIds) || orgIds.length === 0) {
+			// Validate database connection
+			if (!Sequelize) {
+				throw new Error('Database connection not available')
+			}
+
+			const query = `
+				SELECT DISTINCT tenant_code as code 
+				FROM ${MenteeExtension.tableName} 
+				WHERE tenant_code IS NOT NULL 
+				AND tenant_code != '' 
+				AND tenant_code != 'undefined'
+				ORDER BY tenant_code ASC
+			`
+
+			const tenants = await Sequelize.query(query, {
+				type: QueryTypes.SELECT,
+			})
+
+			// Validate results
+			if (!Array.isArray(tenants)) {
+				console.warn('getDistinctTenantCodes returned non-array result')
+				return []
+			}
+
+			return tenants
+		} catch (error) {
+			console.error('Error fetching distinct tenant codes:', error)
+			return []
+		}
+	}
+
+	static async getAllUsersByOrgId(orgCodes, tenantCode) {
+		try {
+			if (!Array.isArray(orgCodes) || orgCodes.length === 0) {
 				return []
 			}
 			const query = `
 			SELECT user_id
 			FROM ${common.materializedViewsPrefix + MenteeExtension.tableName}
-			WHERE organization_id IN (:orgIds)
+			WHERE organization_code IN (:orgCodes) AND tenant_code = :tenantCode
 		`
 			const results = await Sequelize.query(query, {
 				type: QueryTypes.SELECT,
-				replacements: { orgIds },
+				replacements: { orgCodes, tenantCode },
 			})
 			return results
 		} catch (error) {

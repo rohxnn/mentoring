@@ -5,27 +5,29 @@ const KafkaProducer = require('@generics/kafka-communication')
 
 const formQueries = require('../database/queries/form')
 const { UniqueConstraintError } = require('sequelize')
-
-const entityTypeQueries = require('../database/queries/entityType')
-const { getDefaultOrgId } = require('@helpers/getDefaultOrgId')
+const { getDefaults } = require('@helpers/getDefaultOrgId')
+const { Op } = require('sequelize')
 
 const responses = require('@helpers/responses')
+const cacheHelper = require('@generics/cacheHelper')
 
 module.exports = class FormsHelper {
 	/**
 	 * Create Form.
 	 * @method
 	 * @name create
-	 * @param {Object} bodyData
+	 * @param {Object} bodyData - Form data
+	 * @param {String} orgId - Organization ID
+	 * @param {String} orgCode - Organization code
+	 * @param {String} tenantCode - Tenant code
 	 * @returns {JSON} - Form creation data.
 	 */
 
-	static async create(bodyData, orgId) {
+	static async create(bodyData, orgId, orgCode, tenantCode) {
 		try {
 			bodyData['organization_id'] = orgId
-			const form = await formQueries.createForm(bodyData)
-
-			await utils.internalDel('formVersion')
+			bodyData['organization_code'] = orgCode
+			const form = await formQueries.createForm(bodyData, tenantCode, orgCode)
 
 			await KafkaProducer.clearInternalCache('formVersion')
 
@@ -54,23 +56,30 @@ module.exports = class FormsHelper {
 	 * @returns {JSON} - Update form data.
 	 */
 
-	static async update(id, bodyData, orgId) {
+	static async update(id, bodyData, orgCode, tenantCode) {
 		try {
 			let filter = {}
+			let originalForm = null
+
 			if (id) {
-				filter = {
-					id: id,
-					organization_id: orgId,
-				}
+				// ID-based update: use direct database query
+				filter = { id: id }
+				originalForm = await formQueries.findOne({ id: id }, tenantCode)
 			} else {
-				filter = {
-					type: bodyData.type,
-					sub_type: bodyData.sub_type,
-					organization_id: orgId,
+				// Type/subtype based update: use cache first, then fallback to database query
+				filter = { type: bodyData.type, sub_type: bodyData.sub_type }
+
+				// Try cache first for type/subtype lookup
+				originalForm = await cacheHelper.forms.get(tenantCode, orgCode, bodyData.type, bodyData.sub_type)
+
+				if (!originalForm) {
+					// Cache miss: fallback to database query
+					const originalForms = await formQueries.findFormsByFilter(filter, [tenantCode])
+					originalForm = originalForms && originalForms.length > 0 ? originalForms[0] : null
 				}
 			}
 
-			const result = await formQueries.updateOneForm(filter, bodyData)
+			const result = await formQueries.updateOneForm(filter, bodyData, tenantCode, orgCode)
 
 			if (result === 'ENTITY_ALREADY_EXISTS') {
 				return responses.failureResponse({
@@ -85,8 +94,23 @@ module.exports = class FormsHelper {
 					responseCode: 'CLIENT_ERROR',
 				})
 			}
-			await utils.internalDel('formVersion')
 			await KafkaProducer.clearInternalCache('formVersion')
+
+			// Cache invalidation after successful update: just delete, don't re-set
+			try {
+				if (originalForm && originalForm.type && originalForm.sub_type) {
+					// Delete the form cache using original form's type/subtype information
+					await cacheHelper.forms.delete(
+						tenantCode,
+						originalForm.organization_code || orgCode,
+						originalForm.type,
+						originalForm.sub_type
+					)
+				}
+			} catch (error) {
+				console.warn('Failed to invalidate form cache:', error)
+			}
+
 			return responses.successResponse({
 				statusCode: httpStatusCode.accepted,
 				message: 'FORM_UPDATED_SUCCESSFULLY',
@@ -111,28 +135,49 @@ module.exports = class FormsHelper {
 	 * @returns {JSON} - Read form data.
 	 */
 
-	static async read(id, bodyData, orgId) {
+	static async read(id, bodyData, orgCode, tenantCode) {
 		try {
+			// Try to get from cache first if searching by type and subtype (not by ID)
+			if (!id && bodyData?.type && bodyData?.sub_type) {
+				const cachedData = await cacheHelper.forms.get(tenantCode, orgCode, bodyData.type, bodyData.sub_type)
+				if (cachedData) {
+					return responses.successResponse({
+						statusCode: httpStatusCode.ok,
+						message: 'FORM_FETCHED_SUCCESSFULLY',
+						result: cachedData,
+					})
+				}
+			}
+
 			let filter = {}
 			if (id) {
-				filter = { id: id, organization_id: orgId }
+				filter = { id: id, tenant_code: tenantCode }
 			} else {
-				filter = { ...bodyData, organization_id: orgId }
+				filter = { ...bodyData, tenant_code: tenantCode }
 			}
-			const form = await formQueries.findOneForm(filter)
-			let defaultOrgForm
-			if (!form) {
-				const defaultOrgId = await getDefaultOrgId()
-				if (!defaultOrgId)
-					return responses.failureResponse({
-						message: 'DEFAULT_ORG_ID_NOT_SET',
-						statusCode: httpStatusCode.bad_request,
-						responseCode: 'CLIENT_ERROR',
-					})
-				filter = id ? { id: id, organization_id: defaultOrgId } : { ...bodyData, organization_id: defaultOrgId }
-				defaultOrgForm = await formQueries.findOneForm(filter)
+			const defaults = await getDefaults()
+			if (!defaults.orgCode)
+				return responses.failureResponse({
+					message: 'DEFAULT_ORG_CODE_NOT_SET',
+					statusCode: httpStatusCode.bad_request,
+					responseCode: 'CLIENT_ERROR',
+				})
+			if (!defaults.tenantCode)
+				return responses.failureResponse({
+					message: 'DEFAULT_TENANT_CODE_NOT_SET',
+					statusCode: httpStatusCode.bad_request,
+					responseCode: 'CLIENT_ERROR',
+				})
+			// Add organization code to filter if provided
+			if (orgCode) {
+				filter.organization_code = { [Op.in]: [orgCode, defaults.orgCode] }
 			}
-			if (!form && !defaultOrgForm) {
+
+			// Business logic: Try both current tenant and default tenant
+			const tenantCodes = [tenantCode, defaults.tenantCode]
+			const forms = await formQueries.findFormsByFilter(filter, tenantCodes)
+
+			if (!forms || forms.length === 0) {
 				return responses.failureResponse({
 					message: 'FORM_NOT_FOUND',
 					statusCode: httpStatusCode.bad_request,
@@ -140,22 +185,94 @@ module.exports = class FormsHelper {
 				})
 			}
 
+			// Business logic: Prefer current tenant over default tenant
+			const form = forms.find((f) => f.tenant_code === tenantCode) || forms[0]
+
+			// Cache the result if it was searched by type and subtype
+			if (!id && bodyData?.type && bodyData?.sub_type) {
+				await cacheHelper.forms.set(tenantCode, orgCode, bodyData.type, bodyData.sub_type, form)
+			}
+
 			return responses.successResponse({
 				statusCode: httpStatusCode.ok,
 				message: 'FORM_FETCHED_SUCCESSFULLY',
-				result: form ? form : defaultOrgForm,
+				result: form,
 			})
 		} catch (error) {
-			console.log(error)
 			throw error
 		}
 	}
-	static async readAllFormsVersion() {
+	static async readAllFormsVersion(tenantCode) {
 		try {
+			const defaults = await getDefaults()
+			if (!defaults.orgCode)
+				return responses.failureResponse({
+					message: 'DEFAULT_ORG_CODE_NOT_SET',
+					statusCode: httpStatusCode.bad_request,
+					responseCode: 'CLIENT_ERROR',
+				})
+			if (!defaults.tenantCode)
+				return responses.failureResponse({
+					message: 'DEFAULT_TENANT_CODE_NOT_SET',
+					statusCode: httpStatusCode.bad_request,
+					responseCode: 'CLIENT_ERROR',
+				})
+
+			// Fetch all forms from database (no "all forms" cache to avoid duplication)
+			const formsVersionData =
+				(await form.getAllFormsVersion({ [Op.in]: [defaults.tenantCode, tenantCode] })) || {}
+
+			// Cache each individual form for future individual reads
+			try {
+				if (Array.isArray(formsVersionData) && formsVersionData.length > 0) {
+					console.log(`Populating individual form caches for ${formsVersionData.length} forms...`)
+					const cachePromises = []
+
+					// For each form in the version data, fetch complete form and cache it
+					for (const formVersion of formsVersionData) {
+						if (formVersion.type) {
+							// Create a promise to fetch and cache the complete form
+							const cachePromise = (async () => {
+								try {
+									// Fetch complete form data by type (this should include sub_type)
+									const completeFormData = await formQueries.findFormsByFilter(
+										{ type: formVersion.type },
+										[tenantCode]
+									)
+
+									if (completeFormData && completeFormData.length > 0) {
+										const formData = completeFormData[0]
+										if (formData.sub_type) {
+											await cacheHelper.forms.set(
+												tenantCode,
+												formData.organization_code || defaults.orgCode,
+												formData.type,
+												formData.sub_type,
+												formData
+											)
+										}
+									}
+								} catch (error) {
+									console.warn(`Failed to cache individual form for type ${formVersion.type}:`, error)
+								}
+							})()
+
+							cachePromises.push(cachePromise)
+						}
+					}
+
+					// Execute all individual cache operations in parallel
+					await Promise.all(cachePromises)
+					console.log(`Individual forms cache population completed for tenant: ${tenantCode}`)
+				}
+			} catch (individualCacheError) {
+				console.warn('Failed to populate individual forms cache:', individualCacheError)
+			}
+
 			return responses.successResponse({
 				statusCode: httpStatusCode.ok,
 				message: 'FORM_VERSION_FETCHED_SUCCESSFULLY',
-				result: (await form.getAllFormsVersion()) || {},
+				result: formsVersionData,
 			})
 		} catch (error) {
 			return error

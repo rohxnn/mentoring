@@ -4,20 +4,40 @@ const userRequests = require('@requests/user')
 const entityTypeService = require('@services/entity-type')
 const { Parser } = require('@json2csv/plainjs')
 
-exports.getEnrolledMentees = async (sessionId, queryParams, userID) => {
+exports.getEnrolledMentees = async (sessionId, queryParams, tenantCode) => {
 	try {
-		const mentees = await sessionAttendeesQueries.findAll({ session_id: sessionId }, { paranoid: false })
-		const menteeIds = mentees.map((mentee) => mentee.mentee_id)
+		const mentees = await sessionAttendeesQueries.findAll({ session_id: sessionId }, tenantCode)
+
+		// Early return if no mentees found
+		if (!mentees || mentees.length === 0) {
+			return queryParams?.csv === 'true'
+				? new Parser({
+						fields: [
+							{ label: 'No.', value: 'index_number' },
+							{ label: 'Name', value: 'name' },
+							{ label: 'Designation', value: 'designation' },
+							{ label: 'Organization', value: 'organization' },
+							{ label: 'E-mail ID', value: 'email' },
+							{ label: 'Enrollment Type', value: 'type' },
+						],
+						header: true,
+						includeEmptyRows: true,
+						defaultValue: null,
+				  }).parse()
+				: []
+		}
+
 		let menteeTypeMap = {}
+		const menteesMapData = []
 		mentees.forEach((mentee) => {
+			menteesMapData.push({ user_id: mentee.mentee_id })
 			const isDeleted = Boolean(mentee.deleted_at ?? mentee.deletedAt)
 			menteeTypeMap[mentee.mentee_id] = isDeleted ? '' : mentee.type
 		})
 
-		let [enrolledUsers] = await Promise.all([
-			userRequests.getUserDetailedList(menteeIds, true, true).then((result) => result.result),
-
-		])
+		// Fetch missing user details from DB if any
+		let userDetailsResult = await userRequests.getUserDetailedListUsingCache(menteesMapData, tenantCode, true, true)
+		let enrolledUsers = userDetailsResult?.result || []
 
 		enrolledUsers.forEach((user) => {
 			if (menteeTypeMap.hasOwnProperty(user.user_id)) {
@@ -48,12 +68,21 @@ exports.getEnrolledMentees = async (sessionId, queryParams, userID) => {
 
 		// Process entity types to add value labels
 		const uniqueOrgIds = [...new Set(enrolledUsers.map((user) => user.organization_id))]
-		enrolledUsers = await entityTypeService.processEntityTypesToAddValueLabels(
+		const modelName = await menteeExtensionQueries.getModelName()
+
+		const processedUsers = await entityTypeService.processEntityTypesToAddValueLabels(
 			enrolledUsers,
 			uniqueOrgIds,
-			[await menteeExtensionQueries.getModelName()],
-			'organization_id'
+			[modelName],
+			'organization_id',
+			[],
+			[tenantCode]
 		)
+
+		// Check if processing actually returned processed data or error
+		if (processedUsers && !processedUsers.responseCode) {
+			enrolledUsers = processedUsers
+		}
 
 		if (queryParams?.csv === 'true') {
 			const csv = parser.parse(
@@ -87,6 +116,10 @@ exports.getEnrolledMentees = async (sessionId, queryParams, userID) => {
 			'languages',
 			'preferred_language',
 			'custom_entity_text',
+			'createdAt',
+			'updatedAt',
+			'deletedAt',
+			'deleted_at',
 		]
 
 		const cleanedAttendeesAccounts = enrolledUsers.map((user, index) => {

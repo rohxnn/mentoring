@@ -20,7 +20,8 @@ module.exports = class CloudServices {
 				req.query.fileName,
 				req.decodedToken.id,
 				req.query.dynamicPath ? req.query.dynamicPath : '',
-				req.query.public && req.query.public == 'true' ? true : false
+				req.query.public && req.query.public == 'true' ? true : false,
+				req.decodedToken.tenant_code
 			)
 			return signedUrlResponse
 		} catch (error) {
@@ -39,7 +40,8 @@ module.exports = class CloudServices {
 		try {
 			return await filesService.getDownloadableUrl(
 				req.query.filePath,
-				req.query.public && req.query.public == 'true' ? true : false
+				req.query.public && req.query.public == 'true' ? true : false,
+				req.decodedToken.tenant_code
 			)
 		} catch (error) {
 			return error

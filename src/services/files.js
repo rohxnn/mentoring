@@ -15,14 +15,16 @@ module.exports = class FilesHelper {
 	 * @param {string} id  -  userId
 	 * @returns {JSON} - Response contains signed url
 	 */
-	static async getSignedUrl(fileName, id, dynamicPath, isAssetBucket) {
+	static async getSignedUrl(fileName, id, dynamicPath, isAssetBucket, tenantCode) {
 		try {
 			let destFilePath
 			let cloudBucket
 			if (dynamicPath != '') {
-				destFilePath = dynamicPath + '/' + fileName
+				destFilePath = tenantCode ? `${tenantCode}/${dynamicPath}/${fileName}` : `${dynamicPath}/${fileName}`
 			} else {
-				destFilePath = `session/${id}-${new Date().getTime()}-${fileName}`
+				destFilePath = tenantCode
+					? `${tenantCode}/session/${id}-${new Date().getTime()}-${fileName}`
+					: `session/${id}-${new Date().getTime()}-${fileName}`
 			}
 			// decide on which bucket has to be passed based on api call
 			if (isAssetBucket) {
@@ -50,17 +52,23 @@ module.exports = class FilesHelper {
 		}
 	}
 
-	static async getDownloadableUrl(path, isAssetBucket = false) {
+	static async getDownloadableUrl(path, isAssetBucket = false, tenantCode) {
 		try {
 			let bucketName = process.env.CLOUD_STORAGE_BUCKETNAME
 			let response
 			let expiryInSeconds = parseInt(process.env.DOWNLOAD_URL_EXPIRATION_DURATION) || 300
 
+			// Ensure tenant isolation for file paths if tenantCode provided and path doesn't already have it
+			let filePath = path
+			if (tenantCode && !path.startsWith(`${tenantCode}/`)) {
+				filePath = `${tenantCode}/${path}`
+			}
+
 			// downloadable url for public bucket
 			if (isAssetBucket || process.env.CLOUD_STORAGE_BUCKET_TYPE != 'private') {
-				response = await utils.getPublicDownloadableUrl(process.env.PUBLIC_ASSET_BUCKETNAME, path)
+				response = await utils.getPublicDownloadableUrl(process.env.PUBLIC_ASSET_BUCKETNAME, filePath)
 			} else {
-				response = await cloudServices.getSignedUrl(bucketName, path, common.READ_ACCESS, expiryInSeconds)
+				response = await cloudServices.getSignedUrl(bucketName, filePath, common.READ_ACCESS, expiryInSeconds)
 				response = response.signedUrl
 			}
 			// let response = await utils.getDownloadableUrl(path, isAssetBucket)

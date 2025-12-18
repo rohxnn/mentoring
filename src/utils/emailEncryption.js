@@ -38,7 +38,7 @@ const decrypt = async (encryptedEmail) => {
  * @example
  * const encryptedData = '5d41402abc4b2a76b9719d911017c592';
  * const decryptedData = await decryptAndValidate(encryptedData);
- * console.log(decryptedData); // Outputs decrypted string or false if decryption fails.
+
  */
 async function decryptAndValidate(data) {
 	try {

@@ -13,6 +13,7 @@ const deleteuserConsumer = require('@generics/kafka/consumers/deleteuser')
 const rolechangeConsumer = require('@generics/kafka/consumers/rolechange')
 const createuserConsumer = require('@generics/kafka/consumers/createuser')
 const updateuserConsumer = require('@generics/kafka/consumers/updateuser')
+const organizationConsumer = require('@generics/kafka/consumers/organization')
 
 module.exports = async () => {
 	const kafkaIps = process.env.KAFKA_URL.split(',')
@@ -83,6 +84,15 @@ async function startConsumer(kafkaClient) {
 					}
 					if (payload.eventType === 'update' || payload.eventType === 'bulk-update') {
 						response = await updateuserConsumer.messageReceived(payload)
+					}
+					// Handle organization events
+					if (
+						payload.entity === 'organization' &&
+						(payload.eventType === 'create' ||
+							payload.eventType === 'update' ||
+							payload.eventType === 'deactivate')
+					) {
+						response = await organizationConsumer.messageReceived(payload)
 					}
 				}
 				if (payload && topic === process.env.CLEAR_INTERNAL_CACHE) {

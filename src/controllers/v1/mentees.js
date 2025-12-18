@@ -44,7 +44,9 @@ module.exports = class Mentees {
 				req.decodedToken.id,
 				req.pageNo,
 				req.pageSize,
-				req.searchText
+				req.searchText,
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
 			)
 			return sessions
 		} catch (error) {
@@ -67,7 +69,12 @@ module.exports = class Mentees {
 
 	async reports(req) {
 		try {
-			const reports = await menteesService.reports(req.decodedToken.id, req.query.filterType)
+			const reports = await menteesService.reports(
+				req.decodedToken.id,
+				req.query.filterType,
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
+			)
 			return reports
 		} catch (error) {
 			return error
@@ -94,9 +101,10 @@ module.exports = class Mentees {
 				req.searchText,
 				req.query,
 				req.decodedToken.roles,
-				req.decodedToken.organization_id,
+				req.decodedToken.organization_code,
 				req.query.start_date,
-				req.query.end_date
+				req.query.end_date,
+				req.decodedToken.tenant_code
 			)
 			return homeFeed
 		} catch (error) {
@@ -116,7 +124,12 @@ module.exports = class Mentees {
 
 	async joinSession(req) {
 		try {
-			const session = await menteesService.joinSession(req.params.id, req.decodedToken.id)
+			const session = await menteesService.joinSession(
+				req.params.id,
+				req.decodedToken.id,
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
+			)
 			return session
 		} catch (error) {
 			return error
@@ -131,7 +144,9 @@ module.exports = class Mentees {
 				req.searchText,
 				req.query,
 				req.decodedToken.id,
-				isAMentor(req.decodedToken.roles)
+				isAMentor(req.decodedToken.roles),
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
 			)
 		} catch (error) {
 			return error

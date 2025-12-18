@@ -5,6 +5,7 @@ const { QueryTypes } = require('sequelize')
 const sequelize = require('sequelize')
 const Sequelize = require('@database/models/index').sequelize
 const common = require('@constants/common')
+const utils = require('@generics/utils')
 const _ = require('lodash')
 const { Op } = require('sequelize')
 const emailEncryption = require('@utils/emailEncryption')
@@ -14,7 +15,7 @@ module.exports = class MentorExtensionQueries {
 		try {
 			return await Object.keys(MentorExtension.rawAttributes)
 		} catch (error) {
-			return error
+			throw error
 		}
 	}
 
@@ -22,28 +23,34 @@ module.exports = class MentorExtensionQueries {
 		try {
 			return await MentorExtension.name
 		} catch (error) {
-			return error
+			throw error
 		}
 	}
 	static async getTableName() {
 		try {
 			return await MentorExtension.tableName
 		} catch (error) {
-			return error
-		}
-	}
-
-	static async createMentorExtension(data) {
-		try {
-			data = { ...data, is_mentor: true }
-			return await MentorExtension.create(data, { returning: true })
-		} catch (error) {
-			console.log(error)
 			throw error
 		}
 	}
 
-	static async updateMentorExtension(userId, data, options = {}, customFilter = {}, unscoped = false) {
+	static async createMentorExtension(data, tenantCode) {
+		try {
+			data = { ...data, is_mentor: true, tenant_code: tenantCode }
+			const [mentorExtension, created] = await MentorExtension.findOrCreate({
+				where: {
+					user_id: data.user_id,
+					tenant_code: tenantCode,
+				},
+				defaults: data,
+			})
+			return mentorExtension
+		} catch (error) {
+			throw error
+		}
+	}
+
+	static async updateMentorExtension(userId, data, options = {}, customFilter = {}, unscoped = false, tenantCode) {
 		try {
 			data = { ...data, is_mentor: true }
 
@@ -51,7 +58,12 @@ module.exports = class MentorExtensionQueries {
 				delete data['user_id']
 			}
 
-			const whereClause = _.isEmpty(customFilter) ? { user_id: userId } : customFilter
+			let whereClause
+			if (_.isEmpty(customFilter)) {
+				whereClause = { user_id: userId, tenant_code: tenantCode }
+			} else {
+				whereClause = { ...customFilter, tenant_code: tenantCode } // Ensure tenant_code is always included
+			}
 			// If `meta` is included in `data`, use `jsonb_set` to merge changes safely
 			if (data.meta) {
 				let metaExpr = Sequelize.fn('COALESCE', Sequelize.col('meta'), Sequelize.literal(`'{}'::jsonb`))
@@ -74,34 +86,43 @@ module.exports = class MentorExtensionQueries {
 				delete data.meta
 			}
 
+			// Safe merge: tenant filtering cannot be overridden by options.where
+			const { where: optionsWhere, ...otherOptions } = options
+
 			const result = unscoped
 				? await MentorExtension.unscoped().update(data, {
-						where: whereClause,
-						...options,
+						where: {
+							...optionsWhere, // Allow additional where conditions
+							...whereClause, // But tenant filtering takes priority
+						},
+						...otherOptions,
 				  })
 				: await MentorExtension.update(data, {
-						where: whereClause,
-						...options,
+						where: {
+							...optionsWhere, // Allow additional where conditions
+							...whereClause, // But tenant filtering takes priority
+						},
+						...otherOptions,
 				  })
 			return result
 		} catch (error) {
-			console.log(error)
 			throw error
 		}
 	}
 
-	static async getMentorExtension(userId, attributes = [], unScoped = false) {
+	static async getMentorExtension(userId, attributes = [], unScoped = false, tenantCode) {
 		try {
 			const queryOptions = {
-				where: { user_id: userId },
+				where: {
+					user_id: userId,
+					tenant_code: tenantCode,
+				},
 				raw: true,
 			}
-
 			// If attributes are passed update query
 			if (attributes.length > 0) {
 				queryOptions.attributes = attributes
 			}
-
 			let mentor
 			if (unScoped) {
 				mentor = await MentorExtension.unscoped().findOne(queryOptions)
@@ -117,9 +138,9 @@ module.exports = class MentorExtensionQueries {
 		}
 	}
 
-	static async deleteMentorExtension(userId, force = false) {
+	static async deleteMentorExtension(userId, tenantCode, force = false) {
 		try {
-			const options = { where: { user_id: userId } }
+			const options = { where: { user_id: userId, tenant_code: tenantCode } }
 
 			if (force) {
 				options.force = true
@@ -130,7 +151,7 @@ module.exports = class MentorExtensionQueries {
 			throw error
 		}
 	}
-	static async removeMentorDetails(userId) {
+	static async removeMentorDetails(userId, tenantCode) {
 		try {
 			const modelAttributes = MentorExtension.rawAttributes
 
@@ -166,20 +187,25 @@ module.exports = class MentorExtensionQueries {
 			return await MentorExtension.update(fieldsToNullify, {
 				where: {
 					user_id: userId,
+					tenant_code: tenantCode,
 				},
 			})
 		} catch (error) {
-			console.error('An error occurred:', error)
 			throw error
 		}
 	}
-	static async getMentorsByUserIds(ids, options = {}, unscoped = false) {
+	static async getMentorsByUserIds(ids, options = {}, tenantCode, unscoped = false) {
 		try {
+			// Safe merge: tenant filtering cannot be overridden by options.where
+			const { where: optionsWhere, ...otherOptions } = options
+
 			const query = {
 				where: {
+					...optionsWhere, // Allow additional where conditions
 					user_id: ids,
+					tenant_code: tenantCode, // Tenant filtering takes priority
 				},
-				...options,
+				...otherOptions,
 				returning: true,
 				raw: true,
 			}
@@ -190,7 +216,6 @@ module.exports = class MentorExtensionQueries {
 
 			return result
 		} catch (error) {
-			console.log(error)
 			throw error
 		}
 	}
@@ -219,7 +244,8 @@ module.exports = class MentorExtensionQueries {
 		returnOnlyUserId,
 		searchFilter = '',
 		searchText,
-		defaultFilter = ''
+		defaultFilter = '',
+		tenantCode
 	) {
 		try {
 			const excludeUserIds = ids.length === 0
@@ -239,13 +265,12 @@ module.exports = class MentorExtensionQueries {
 
 			let saasFilterClause = saasFilter !== '' ? saasFilter : ''
 			const defaultFilterClause = defaultFilter != '' ? 'AND ' + defaultFilter : ''
-
 			if (excludeUserIds && filter.query.length === 0) {
 				saasFilterClause = saasFilterClause.replace('AND ', '') // Remove "AND" if excludeUserIds is true and filter is empty
 			}
 
 			let projectionClause =
-				'name,email,designation,organization_id,area_of_expertise,education_qualification,custom_entity_text,user_id,rating,mentor_visibility,mentee_visibility,meta'
+				'name,email,designation,organization_code,area_of_expertise,education_qualification,custom_entity_text,user_id,rating,mentor_visibility,mentee_visibility,meta'
 
 			if (returnOnlyUserId) {
 				projectionClause = 'user_id'
@@ -256,10 +281,11 @@ module.exports = class MentorExtensionQueries {
 				filterClause = filterClause.startsWith('AND') ? filterClause : 'AND ' + filterClause
 			}
 
+			const viewName = utils.getTenantViewName(tenantCode, MentorExtension.tableName)
 			let query = `
 				SELECT ${projectionClause}
 				FROM
-					${common.materializedViewsPrefix + MentorExtension.tableName}
+					${viewName}
 				WHERE
 					${userFilterClause}
 					${filterClause}
@@ -303,7 +329,7 @@ module.exports = class MentorExtensionQueries {
 			const countQuery = `
 			SELECT count(*) AS "count"
 			FROM
-				${common.materializedViewsPrefix + MentorExtension.tableName}
+				${viewName}
 			WHERE
 				${userFilterClause}
 				${filterClause}
@@ -323,8 +349,7 @@ module.exports = class MentorExtensionQueries {
 				count: Number(count[0].count),
 			}
 		} catch (error) {
-			console.log(error)
-			return error
+			throw error
 		}
 	}
 
@@ -418,9 +443,9 @@ module.exports = class MentorExtensionQueries {
 			type: Sequelize.QueryTypes.UPDATE,
 		})
 	}
-	static async getMentorExtensions(userIds, attributes = []) {
+	static async getMentorExtensions(userIds, attributes = [], tenantCode) {
 		try {
-			const queryOptions = { where: { user_id: { [Op.in]: userIds } }, raw: true }
+			const queryOptions = { where: { user_id: { [Op.in]: userIds }, tenant_code: tenantCode }, raw: true }
 			if (attributes.length > 0) {
 				queryOptions.attributes = attributes
 			}
@@ -447,7 +472,7 @@ module.exports = class MentorExtensionQueries {
 			// Construct the query with the provided whereClause, projection, and saasFilterClause
 			let query = `
 				SELECT ${projection}
-				FROM ${common.materializedViewsPrefix + MentorExtension.tableName}
+				FROM ${utils.getTenantViewName(tenantCode, MentorExtension.tableName)}
 				WHERE ${whereClause}
 				${saasFilterClause}
 			`
@@ -460,7 +485,7 @@ module.exports = class MentorExtensionQueries {
 			// Count query
 			const countQuery = `
 				SELECT count(*) AS "count"
-				FROM ${common.materializedViewsPrefix + MentorExtension.tableName}
+				FROM ${utils.getTenantViewName(tenantCode, MentorExtension.tableName)}
 				WHERE ${whereClause}
 				${saasFilterClause}
 			`
@@ -475,15 +500,15 @@ module.exports = class MentorExtensionQueries {
 				count: Number(count[0].count),
 			}
 		} catch (error) {
-			return error
+			throw error
 		}
 	}
 
-	static async findOneFromView(userId) {
+	static async findOneFromView(userId, tenantCode) {
 		try {
 			let query = `
 				SELECT *
-				FROM ${common.materializedViewsPrefix + MentorExtension.tableName}
+				FROM ${utils.getTenantViewName(tenantCode, MentorExtension.tableName)}
 				WHERE user_id = :userId
 				LIMIT 1
 			`
@@ -495,7 +520,7 @@ module.exports = class MentorExtensionQueries {
 
 			return user.length > 0 ? user[0] : null
 		} catch (error) {
-			return error
+			throw error
 		}
 	}
 }

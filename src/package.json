@@ -36,7 +36,7 @@
 		"deep-object-diff": "^1.1.9",
 		"dotenv": "^10.0.0",
 		"elevate-logger": "3.0.2",
-		"elevate-node-cache": "^1.0.6",
+		"elevate-node-cache": "^2.0.0",
 		"elevate-services-health-check": "^0.0.9",
 		"express": "^4.17.1",
 		"express-validator": "^5.3.1",
@@ -65,7 +65,7 @@
 		"stream": "^0.0.2",
 		"swagger-ui-express": "^4.4.0",
 		"uuid": "^8.3.2",
-		"xml2json": "^0.12.0"
+		"fast-xml-parser": "^4.3.2"
 	},
 	"devDependencies": {
 		"@faker-js/faker": "^7.6.0",

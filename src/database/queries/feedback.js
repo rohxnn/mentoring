@@ -19,12 +19,14 @@ module.exports = class QuestionsData {
 			})
 			return feedback
 		} catch (error) {
-			return error
+			throw error
 		}
 	}
 
-	static async findAll(filter, attributes = {}) {
+	static async findAll(filter, tenantCode, attributes = {}) {
 		try {
+			// Ensure tenant isolation without mutating caller-provided filter
+			filter = { ...filter, tenant_code: tenantCode }
 			const feedbackData = await Feedback.findAll({
 				where: filter,
 				...attributes,

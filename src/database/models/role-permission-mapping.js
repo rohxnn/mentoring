@@ -37,5 +37,13 @@ module.exports = (sequelize, DataTypes) => {
 		}
 	)
 
+	RolePermission.associate = (models) => {
+		// RolePermission belongs to Permission
+		RolePermission.belongsTo(models.Permission, {
+			foreignKey: 'permission_id',
+			as: 'permission',
+		})
+	}
+
 	return RolePermission
 }

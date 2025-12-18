@@ -5,7 +5,6 @@
  * Description : All commonly used api responses through out the service
  */
 
-const form = require('@generics/form')
 const { elevateLog, correlationId } = require('elevate-logger')
 const logger = elevateLog.init()
 const successResponse = async ({
@@ -18,8 +17,8 @@ const successResponse = async ({
 	stream,
 	fileName = '',
 	interpolation = false, // Can be true or an object like { title: 'Math' }
+	formsVersion = null, // Pass forms version from caller instead of fetching here
 }) => {
-	const versions = await form.getAllFormsVersion()
 	let response = {
 		statusCode,
 		responseCode,
@@ -29,7 +28,7 @@ const successResponse = async ({
 		interpolation, // Pass interpolation object or true
 		meta: {
 			...meta,
-			formsVersion: versions,
+			...(formsVersion && { formsVersion }),
 			correlation: correlationId.getId(),
 			meetingPlatform: process.env.DEFAULT_MEETING_SERVICE,
 		},

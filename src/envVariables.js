@@ -123,6 +123,25 @@ let enviromentVariables = {
 		message: 'Redis Host Url',
 		optional: false,
 	},
+	REDIS_PORT: {
+		message: 'Redis Port',
+		optional: true,
+		default: '6379',
+	},
+	REDIS_PASSWORD: {
+		message: 'Redis Password',
+		optional: true,
+	},
+	CACHE_ENABLED: {
+		message: 'Enable/Disable Redis Cache',
+		optional: true,
+		default: 'true',
+	},
+	CACHE_SHARDS: {
+		message: 'Number of Redis Cache Shards',
+		optional: true,
+		default: '32',
+	},
 	ENABLE_EMAIL_FOR_REPORT_ISSUE: {
 		message: 'Required true or false',
 		optional: true,
@@ -190,6 +209,11 @@ let enviromentVariables = {
 		optional: true,
 		default: 'default_code',
 	},
+	DEFAULT_ORGANIZATION_CODE: {
+		message: 'Required default organization code',
+		optional: true,
+		default: 'default_code',
+	},
 	REFRESH_VIEW_INTERVAL: {
 		message: 'Interval to refresh views in milliseconds',
 		optional: true,
@@ -198,6 +222,11 @@ let enviromentVariables = {
 	DEFAULT_ORG_ID: {
 		message: 'Default organization ID',
 		optional: false,
+	},
+	DEFAULT_TENANT_CODE: {
+		message: 'Required default tenant code for migration',
+		optional: true,
+		default: 'DEFAULT_TENANT',
 	},
 	MENTEE_SESSION_CANCELLATION_EMAIL_TEMPLATE: {
 		message: 'Required email template name for mentee session cancellation',
@@ -223,11 +252,6 @@ let enviromentVariables = {
 		message: 'Required email template name for mentee session enrollment by manager',
 		optional: true,
 		default: 'mentee_session_enrollment_by_manager',
-	},
-	MENTEE_PUBLIC_SESSION_ENROLLMENT_BY_MANAGER_EMAIL_TEMPLATE: {
-		message: 'Required email template name for mentee session enrollment by manager',
-		optional: true,
-		default: 'mentee_public_session_enrollment_by_manager',
 	},
 	MENTOR_PRIVATE_SESSION_INVITE_BY_MANAGER_EMAIL_TEMPLATE: {
 		message: 'Required email template name for mentor private session invite by manager',
@@ -577,6 +601,11 @@ let enviromentVariables = {
 		message: 'Required SERVICE_NAME to handling health check',
 		optional: true,
 		default: 'MentoringService',
+	},
+	CACHE_ENABLED: {
+		message: 'Required ENABLE_CACHE to handling health check',
+		optional: true,
+		default: false,
 	},
 }
 

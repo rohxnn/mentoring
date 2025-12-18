@@ -1,5 +1,6 @@
 const request = require('request')
-const parser = require('xml2json')
+const { XMLParser } = require('fast-xml-parser')
+const xmlParser = new XMLParser()
 
 var get = function (url, token = '', internal_access_token = false) {
 	return new Promise((resolve, reject) => {
@@ -24,7 +25,7 @@ var get = function (url, token = '', internal_access_token = false) {
 				if (data.headers['content-type'].includes('application/json')) {
 					response = JSON.parse(response)
 				} else if (/text\/xml|application\/xml/.test(data.headers['content-type'])) {
-					response = parser.toJson(response, { object: true })
+					response = xmlParser.parse(response)
 				}
 
 				result.data = response
@@ -66,7 +67,7 @@ var post = function (url, body, token = '', internal_access_token = false) {
 				} else {
 					let response = data.body
 					if (data.headers['content-type'].split(';')[0] !== 'application/json') {
-						response = parser.toJson(data.body)
+						response = xmlParser.parse(data.body)
 					}
 
 					response = JSON.parse(response)

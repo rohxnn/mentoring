@@ -1,5 +1,4 @@
 'use strict'
-
 module.exports = (sequelize, DataTypes) => {
 	const ReportRoleMapping = sequelize.define(
 		'ReportRoleMapping',
@@ -17,6 +16,14 @@ module.exports = (sequelize, DataTypes) => {
 			role_title: {
 				type: DataTypes.STRING,
 				primaryKey: true,
+				allowNull: false,
+			},
+			organization_code: {
+				type: DataTypes.STRING,
+				allowNull: false,
+			},
+			tenant_code: {
+				type: DataTypes.STRING,
 				allowNull: false,
 			},
 			created_at: {

@@ -1,4 +1,3 @@
-'use strict'
 const Sequelize = require('sequelize')
 const Op = Sequelize.Op
 const defaultChatEnabled = process.env.ENABLE_CHAT === 'true'
@@ -96,6 +95,18 @@ module.exports = (sequelize, DataTypes) => {
 			status: {
 				type: DataTypes.STRING,
 				defaultValue: 'ACTIVE',
+			},
+			organization_code: {
+				type: DataTypes.STRING,
+				allowNull: false,
+			},
+			tenant_code: {
+				type: DataTypes.STRING,
+				allowNull: false,
+			},
+			username: {
+				type: DataTypes.STRING(255),
+				allowNull: true,
 			},
 		},
 		{

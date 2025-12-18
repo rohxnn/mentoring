@@ -1,4 +1,3 @@
-'use strict'
 module.exports = (sequelize, DataTypes) => {
 	const Availability = sequelize.define(
 		'Availability',
@@ -40,6 +39,14 @@ module.exports = (sequelize, DataTypes) => {
 			updated_by: { type: DataTypes.STRING, allowNull: true },
 			created_by: { type: DataTypes.STRING, allowNull: true },
 			organization_id: { type: DataTypes.STRING, allowNull: false, defaultValue: 0, primaryKey: true },
+			organization_code: {
+				type: DataTypes.STRING,
+				allowNull: false,
+			},
+			tenant_code: {
+				type: DataTypes.STRING,
+				allowNull: false,
+			},
 		},
 		{ sequelize, modelName: 'Availability', tableName: 'availabilities', freezeTableName: true, paranoid: true }
 	)

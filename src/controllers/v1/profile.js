@@ -17,16 +17,19 @@ module.exports = class Mentees {
 				return await mentorsService.createMentorExtension(
 					req.body,
 					req.decodedToken.id,
+					req.decodedToken.organization_code,
+					req.decodedToken.tenant_code,
 					req.decodedToken.organization_id
 				)
 			}
 			return await menteesService.createMenteeExtension(
 				req.body,
 				req.decodedToken.id,
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code,
 				req.decodedToken.organization_id
 			)
 		} catch (error) {
-			console.error(error)
 			return error
 		}
 	}
@@ -46,13 +49,15 @@ module.exports = class Mentees {
 				return await mentorsService.updateMentorExtension(
 					req.body,
 					req.decodedToken.id,
-					req.decodedToken.organization_id
+					req.decodedToken.organization_code,
+					req.decodedToken.tenant_code
 				)
 			}
 			return await menteesService.updateMenteeExtension(
 				req.body,
 				req.decodedToken.id,
-				req.decodedToken.organization_id
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
 			)
 		} catch (error) {
 			return error
@@ -70,9 +75,16 @@ module.exports = class Mentees {
 	async getExtension(req) {
 		try {
 			if (isAMentor(req.decodedToken.roles)) {
-				return await mentorsService.getMentorExtension(req.query.id || req.decodedToken.id)
+				return await mentorsService.getMentorExtension(
+					req.query.id || req.decodedToken.id,
+					req.decodedToken.tenant_code
+				)
 			}
-			return await menteesService.getMenteeExtension(req.decodedToken.id, req.decodedToken.organization_id) // params since read will be public for mentees
+			return await menteesService.getMenteeExtension(
+				req.decodedToken.id,
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
+			)
 		} catch (error) {
 			return error
 		}
@@ -91,16 +103,19 @@ module.exports = class Mentees {
 			if (isAMentor(req.decodedToken.roles)) {
 				return await mentorsService.read(
 					req.decodedToken.id,
-					req.decodedToken.organization_id,
+					req.decodedToken.organization_code,
 					'',
 					'',
-					req.decodedToken.roles
+					req.decodedToken.roles,
+					req.decodedToken.tenant_code
 				)
 			}
+
 			return await menteesService.read(
 				req.decodedToken.id,
-				req.decodedToken.organization_id,
-				req.decodedToken.roles
+				req.decodedToken.organization_code,
+				req.decodedToken.roles,
+				req.decodedToken.tenant_code
 			)
 		} catch (error) {
 			return error
@@ -122,7 +137,8 @@ module.exports = class Mentees {
 				req.query.organization ? req.query.organization : 'true',
 				req.query.entity_types ? req.query.entity_types : '',
 				req.query.filter_type ? req.query.filter_type : '',
-				req.decodedToken
+				req.decodedToken,
+				req.decodedToken.tenant_code
 			)
 			return filterList
 		} catch (error) {
@@ -140,7 +156,11 @@ module.exports = class Mentees {
 	 */
 	async getCommunicationToken(req) {
 		try {
-			return await menteesService.getCommunicationToken(req.decodedToken.id) // params since read will be public for mentees
+			return await menteesService.getCommunicationToken(
+				req.decodedToken.id,
+				req.decodedToken.tenant_code,
+				req.decodedToken.organization_code
+			) // params since read will be public for mentees
 		} catch (error) {
 			return error
 		}
@@ -157,7 +177,7 @@ module.exports = class Mentees {
 	 */
 	async externalIdMapping(req) {
 		try {
-			return await menteesService.externalMapping(req.body)
+			return await menteesService.externalMapping(req.body, req.decodedToken.tenant_code)
 		} catch (error) {
 			return error
 		}
@@ -180,7 +200,7 @@ module.exports = class Mentees {
 	 */
 	async logout(req) {
 		try {
-			return await menteesService.logout(req.decodedToken.id) // Params since read will be public for mentees
+			return await menteesService.logout(req.decodedToken.id, req.decodedToken.tenant_code) // Params since read will be public for mentees
 		} catch (error) {
 			return error
 		}
@@ -194,8 +214,8 @@ module.exports = class Mentees {
 	 * @param {String} req.params.id - The mentor's ID.
 	 * @param {Object} req.decodedToken - Decoded token from authentication.
 	 * @param {String} req.decodedToken.id - The user's ID.
-	 * @param {String} req.decodedToken.organization_id - The user's organization ID.
-	 * @param {Array} req.decodedToken.roles - The user's roles.
+	 * @param {String} req.decodedToken.organization_code - The user's organization ID.
+	 * @param {Array} req.decodedToken.organizations[0].roles - The user's roles.
 	 * @param {Boolean} isAMentor - Indicates whether the user is a mentor.
 	 * @returns {Promise<Object>} - The mentor's profile details.
 	 */
@@ -203,10 +223,11 @@ module.exports = class Mentees {
 		try {
 			return await menteesService.details(
 				req.params.id,
-				req.decodedToken.organization_id,
+				req.decodedToken.organization_code,
 				req.decodedToken.id,
 				isAMentor(req.decodedToken.roles),
-				req.decodedToken.roles
+				req.decodedToken.roles,
+				req.decodedToken.tenant_code
 			)
 		} catch (error) {
 			return error
@@ -224,7 +245,7 @@ module.exports = class Mentees {
 	//  */
 	// async delete(req) {
 	// 	try {
-	// 		if (isAMentor(req.decodedToken.roles)) {
+	// 		if (isAMentor(req.decodedToken.organizations[0].roles)) {
 	// 			return await mentorsService.deleteMentorExtension(req.body, req.decodedToken.id)
 	// 		}
 	// 		return await menteesService.deleteMenteeExtension(req.decodedToken.id)

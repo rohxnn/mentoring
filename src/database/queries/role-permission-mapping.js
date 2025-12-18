@@ -21,11 +21,12 @@ exports.delete = async (filter) => {
 
 exports.findAll = async (filter, attributes) => {
 	try {
-		return RolePermissionMapping.findAll({
+		const findRolePermisdions = await RolePermissionMapping.findAll({
 			where: filter,
 			attributes,
 			raw: true,
 		})
+		return findRolePermisdions
 	} catch (error) {
 		throw error
 	}

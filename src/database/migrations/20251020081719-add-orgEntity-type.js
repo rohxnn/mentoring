@@ -6,6 +6,10 @@ module.exports = {
 			if (!defaultOrgId) {
 				throw new Error('Default org ID is undefined. Please make sure it is set in sequelize options.')
 			}
+
+			// Get partition column values from environment
+			const defaultOrgCode = process.env.DEFAULT_ORGANISATION_CODE || 'default_code'
+			const defaultTenantCode = process.env.DEFAULT_TENANT_CODE || 'default'
 			const entitiesArray = {
 				about: {
 					sequence: 2,
@@ -24,6 +28,8 @@ module.exports = {
 					updated_by: 0,
 					allow_filtering: false,
 					organization_id: defaultOrgId,
+					organization_code: defaultOrgCode,
+					tenant_code: defaultTenantCode,
 					has_entities: false,
 					meta: JSON.stringify({
 						label: convertToWords(key),

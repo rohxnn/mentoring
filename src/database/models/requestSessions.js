@@ -1,4 +1,3 @@
-'use strict'
 module.exports = (sequelize, DataTypes) => {
 	const RequestSession = sequelize.define(
 		'RequestSession',
@@ -49,6 +48,10 @@ module.exports = (sequelize, DataTypes) => {
 				allowNull: false,
 			},
 			created_by: {
+				type: DataTypes.STRING,
+				allowNull: false,
+			},
+			tenant_code: {
 				type: DataTypes.STRING,
 				allowNull: false,
 			},

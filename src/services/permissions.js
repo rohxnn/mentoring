@@ -5,6 +5,7 @@ const permissionsQueries = require('@database/queries/permissions')
 const { UniqueConstraintError, ForeignKeyConstraintError } = require('sequelize')
 const { Op } = require('sequelize')
 const responses = require('@helpers/responses')
+const cacheHelper = require('@generics/cacheHelper')
 
 module.exports = class PermissionsHelper {
 	/**
@@ -19,6 +20,15 @@ module.exports = class PermissionsHelper {
 	static async create(bodyData) {
 		try {
 			const permissions = await permissionsQueries.createPermission(bodyData)
+
+			// Invalidate all permissions caches since new permission might affect role mappings
+			try {
+				await cacheHelper.evictNamespace({ ns: 'permissions' })
+				await cacheHelper.evictNamespace({ ns: 'apiPermissions' })
+			} catch (cacheError) {
+				console.warn('Cache invalidation failed for permission creation:', cacheError)
+			}
+
 			return responses.successResponse({
 				statusCode: httpStatusCode.created,
 				message: 'PERMISSION_CREATED_SUCCESSFULLY',
@@ -75,6 +85,14 @@ module.exports = class PermissionsHelper {
 					responseCode: 'CLIENT_ERROR',
 				})
 			} else {
+				// Invalidate all permissions caches since permission update might affect role mappings
+				try {
+					await cacheHelper.evictNamespace({ ns: 'permissions' })
+					await cacheHelper.evictNamespace({ ns: 'apiPermissions' })
+				} catch (cacheError) {
+					console.warn('Cache invalidation failed for permission update:', cacheError)
+				}
+
 				return responses.successResponse({
 					statusCode: httpStatusCode.created,
 					message: 'PERMISSION_UPDATED_SUCCESSFULLY',
@@ -114,6 +132,15 @@ module.exports = class PermissionsHelper {
 					responseCode: 'CLIENT_ERROR',
 				})
 			}
+
+			// Invalidate all permissions caches since permission deletion might affect role mappings
+			try {
+				await cacheHelper.evictNamespace({ ns: 'permissions' })
+				await cacheHelper.evictNamespace({ ns: 'apiPermissions' })
+			} catch (cacheError) {
+				console.warn('Cache invalidation failed for permission deletion:', cacheError)
+			}
+
 			return responses.successResponse({
 				statusCode: httpStatusCode.accepted,
 				message: 'PERMISSION_DELETED_SUCCESSFULLY',

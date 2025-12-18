@@ -13,7 +13,7 @@ module.exports = class Connection {
 	 */
 	async getInfo(req) {
 		try {
-			return await connectionsService.getInfo(req.body.user_id, req.decodedToken.id)
+			return await connectionsService.getInfo(req.body.user_id, req.decodedToken.id, req.decodedToken.tenant_code)
 		} catch (error) {
 			throw error
 		}
@@ -30,7 +30,12 @@ module.exports = class Connection {
 	 */
 	async initiate(req) {
 		try {
-			return await connectionsService.initiate(req.body, req.decodedToken.id)
+			return await connectionsService.initiate(
+				req.body,
+				req.decodedToken.id,
+				req.decodedToken.tenant_code,
+				req.decodedToken.organization_code
+			)
 		} catch (error) {
 			throw error
 		}
@@ -48,7 +53,12 @@ module.exports = class Connection {
 	 */
 	async pending(req) {
 		try {
-			return await connectionsService.pending(req.decodedToken.id, req.pageNo, req.pageSize)
+			return await connectionsService.pending(
+				req.decodedToken.id,
+				req.pageNo,
+				req.pageSize,
+				req.decodedToken.tenant_code
+			)
 		} catch (error) {
 			throw error
 		}
@@ -65,7 +75,12 @@ module.exports = class Connection {
 	 */
 	async accept(req) {
 		try {
-			return await connectionsService.accept(req.body, req.decodedToken.id, req.decodedToken.organization_id)
+			return await connectionsService.accept(
+				req.body,
+				req.decodedToken.id,
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
+			)
 		} catch (error) {
 			throw error
 		}
@@ -82,7 +97,12 @@ module.exports = class Connection {
 	 */
 	async reject(req) {
 		try {
-			return await connectionsService.reject(req.body, req.decodedToken.id, req.decodedToken.organization_id)
+			return await connectionsService.reject(
+				req.body,
+				req.decodedToken.id,
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
+			)
 		} catch (error) {
 			throw error
 		}
@@ -97,7 +117,7 @@ module.exports = class Connection {
 	 * @param {Object} req.query - Additional query parameters for filtering.
 	 * @param {Object} req.decodedToken - The decoded token containing authenticated user info.
 	 * @param {string} req.decodedToken.id - The ID of the authenticated user.
-	 * @param {string} req.decodedToken.organization_id - The organization ID of the authenticated user.
+	 * @param {string} req.decodedToken.organization_code - The organization ID of the authenticated user.
 	 * @returns {Promise<Object[]>} The list of connections.
 	 * @throws Will throw an error if the request fails.
 	 */
@@ -109,7 +129,8 @@ module.exports = class Connection {
 				req.searchText,
 				req.query,
 				req.decodedToken.id,
-				req.decodedToken.organization_id
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
 			)
 		} catch (error) {
 			throw error

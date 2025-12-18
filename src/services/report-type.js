@@ -1,12 +1,14 @@
 const httpStatusCode = require('@generics/http-status')
 const responses = require('@helpers/responses')
 const reportTypeQueries = require('@database/queries/reportTypes')
+const { getDefaults } = require('@helpers/getDefaultOrgId')
 
 module.exports = class ReportsHelper {
-	static async createReportType(data) {
+	static async createReportType(data, organizationCode, tenantCode) {
 		try {
+			data.organization_code = organizationCode
 			// Attempt to create a new report directly
-			const reportTypeCreation = await reportTypeQueries.createReportType(data)
+			const reportTypeCreation = await reportTypeQueries.createReportType(data, tenantCode)
 			return responses.successResponse({
 				statusCode: httpStatusCode.created,
 				message: 'REPORT_TYPE_CREATED_SUCCESS',
@@ -29,29 +31,45 @@ module.exports = class ReportsHelper {
 		}
 	}
 
-	static async getReportType(title) {
+	static async getReportType(title, tenantCode) {
 		try {
-			const readReportType = await reportTypeQueries.findReportTypeByTitle(title)
-			if (!readReportType) {
+			const defaults = await getDefaults()
+			if (!defaults.tenantCode) {
+				return responses.failureResponse({
+					message: 'DEFAULT_TENANT_CODE_NOT_SET',
+					statusCode: httpStatusCode.bad_request,
+					responseCode: 'CLIENT_ERROR',
+				})
+			}
+
+			// Try both current tenant and default tenant using array
+			const tenantCodes = [tenantCode, defaults.tenantCode]
+			const reportTypes = await reportTypeQueries.findReportTypesByTitle(title, tenantCodes)
+
+			if (!reportTypes || reportTypes.length === 0) {
 				return responses.failureResponse({
 					message: 'REPORT_TYPE_NOT_FOUND',
 					statusCode: httpStatusCode.bad_request,
 					responseCode: 'CLIENT_ERROR',
 				})
 			}
+
+			// Business logic: Prefer current tenant over default tenant
+			const reportType = reportTypes.find((rt) => rt.tenant_code === tenantCode) || reportTypes[0]
+
 			return responses.successResponse({
 				statusCode: httpStatusCode.created,
 				message: 'REPORT_TYPE_FETCHED_SUCCESSFULLY',
-				result: readReportType.dataValues,
+				result: reportType,
 			})
 		} catch (error) {
 			throw error
 		}
 	}
 
-	static async updateReportType(filter, updateData) {
+	static async updateReportType(filter, updateData, tenantCode) {
 		try {
-			const updatedReport = await reportTypeQueries.updateReportType(filter, updateData)
+			const updatedReport = await reportTypeQueries.updateReportType(filter, updateData, tenantCode)
 			if (!updatedReport) {
 				return responses.failureResponse({
 					message: 'REPORT_TYPE_UPDATE_FAILED',
@@ -69,9 +87,9 @@ module.exports = class ReportsHelper {
 		}
 	}
 
-	static async deleteReportType(id) {
+	static async deleteReportType(id, tenantCode) {
 		try {
-			const deletedRows = await reportTypeQueries.deleteReportType(id)
+			const deletedRows = await reportTypeQueries.deleteReportType(id, tenantCode)
 			if (deletedRows === 0) {
 				return responses.failureResponse({
 					message: 'REPORT_TYPE_DELETION_FAILED',

@@ -134,7 +134,9 @@ module.exports = {
 	excludedQueryParams: ['enrolled'],
 	materializedViewsPrefix: 'm_',
 	mentorExtensionModelName: 'MentorExtension',
+	userExtensionModelName: 'UserExtension',
 	sessionModelName: 'Session',
+	entityTypeModelNames: ['Session', 'MentorExtension', 'UserExtension'],
 	notificationEndPoint: '/mentoring/v1/notifications/emailCronJob',
 	sessionCompleteEndpoint: '/mentoring/v1/sessions/completed/',
 	expireSessionRequestEndpoint: '/mentoring/v1/requestSessions/expire',
@@ -236,8 +238,83 @@ module.exports = {
 	SESSION_PRE_RESOURCE_TYPE: 'pre',
 	USER_NOT_FOUND: 'USER NOT FOUND',
 	UNDER_DELETION_STATUS: 'UNDER_DELETION',
-	SORT_ORDER:{
+
+	// Cache configuration with multi-namespace support
+	CACHE_CONFIG: {
+		enableCache: process.env.CACHE_ENABLED,
+		shards: parseInt(process.env.CACHE_SHARDS) || 32,
+		namespaces: {
+			sessions: {
+				name: 'sessions',
+				enabled: true,
+				defaultTtl: 86400, // 1 day
+				useInternal: false,
+			},
+			entityTypes: {
+				name: 'entityTypes',
+				enabled: true,
+				defaultTtl: 86400, // 1 day
+				useInternal: false,
+			},
+			forms: {
+				name: 'forms',
+				enabled: true,
+				defaultTtl: 86400, // 1 day
+				useInternal: false,
+			},
+			organizations: {
+				name: 'organizations',
+				enabled: true,
+				defaultTtl: 86400, // 1 day
+				useInternal: false,
+			},
+			mentor: {
+				name: 'mentor',
+				enabled: true,
+				defaultTtl: 86400, // 1 day
+				useInternal: false,
+			},
+			mentee: {
+				name: 'mentee',
+				enabled: true,
+				defaultTtl: 86400, // 1 day
+				useInternal: false,
+			},
+			platformConfig: {
+				name: 'platformConfig',
+				enabled: true,
+				defaultTtl: 86400, // 1 day
+				useInternal: false,
+			},
+			notificationTemplates: {
+				name: 'notificationTemplates',
+				enabled: true,
+				defaultTtl: 86400, // 1 day
+				useInternal: false,
+			},
+			displayProperties: {
+				name: 'displayProperties',
+				enabled: true,
+				defaultTtl: 86400, // 1 day
+				useInternal: false,
+			},
+			permissions: {
+				name: 'permissions',
+				enabled: true,
+				defaultTtl: 86400, // 1 day
+				useInternal: false,
+			},
+			apiPermissions: {
+				name: 'apiPermissions',
+				enabled: true,
+				defaultTtl: 86400, // 1 day
+				useInternal: false,
+			},
+		},
+	},
+
+	SORT_ORDER: {
 		ASCENDING: 'ASC',
-		DESCENDING: 'DESC'
-	}
+		DESCENDING: 'DESC',
+	},
 }

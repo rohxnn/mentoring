@@ -59,7 +59,7 @@ module.exports = class Availability {
 	 */
 	async read(req) {
 		try {
-			return await availabilityService.read(req.query, req.params.id)
+			return await availabilityService.read(req.query, req.params.id, req.decodedToken.tenant_code)
 		} catch (error) {
 			return error
 		}
@@ -74,7 +74,7 @@ module.exports = class Availability {
 	 */
 	async isAvailable(req) {
 		try {
-			return await availabilityService.isAvailable(req.query, req.params.id)
+			return await availabilityService.isAvailable(req.query, req.params.id, req.decodedToken.tenant_code)
 		} catch (error) {
 			return error
 		}
@@ -89,7 +89,7 @@ module.exports = class Availability {
 	 */
 	async users(req) {
 		try {
-			return await availabilityService.users(req.query, req.params.id)
+			return await availabilityService.users(req.query, req.params.id, req.decodedToken.tenant_code)
 		} catch (error) {
 			return error
 		}

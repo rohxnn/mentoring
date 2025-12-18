@@ -3,7 +3,12 @@ const adminService = require('@services/admin')
 var messageReceived = function (message) {
 	return new Promise(async function (resolve, reject) {
 		try {
-			const response = await adminService.userDelete(message.entityId.toString())
+			const response = await adminService.userDelete(
+				message.entityId.toString(),
+				message.userId,
+				message.organizations?.code || message.organizations?.[0]?.code,
+				message.tenant_code
+			)
 			return resolve(response)
 		} catch (error) {
 			return reject(error)

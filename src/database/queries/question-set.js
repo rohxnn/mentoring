@@ -19,7 +19,7 @@ module.exports = class QuestionsData {
 			})
 			return questionSet
 		} catch (error) {
-			return error
+			throw error
 		}
 	}
 
@@ -31,7 +31,7 @@ module.exports = class QuestionsData {
 			})
 			return rowsAffected > 0 ? 'QUESTIONS_SET_UPDATED' : 'QUESTIONS_SET_NOT_FOUND'
 		} catch (error) {
-			return error
+			throw error
 		}
 	}
 
@@ -44,7 +44,7 @@ module.exports = class QuestionsData {
 			})
 			return questionSets
 		} catch (error) {
-			return error
+			throw error
 		}
 	}
 }

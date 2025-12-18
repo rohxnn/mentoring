@@ -10,8 +10,16 @@ reviews:
   high_level_summary: true
   high_level_summary_placeholder: '@coderabbitai summary'
   high_level_summary_in_walkthrough: false
+  high_level_summary_instructions: 'Create concise release notes as a bullet-point list, followed by a Markdown table showing lines added and removed by each contributing author.'
   auto_title_placeholder: '@coderabbitai'
-  auto_title_instructions: ''
+  auto_title_instructions: |
+    Use the Conventional Commits format for PR titles.
+    Format: <type>(<scope>): <short imperative description>
+    - type must be one of: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
+    - scope is optional but recommended (e.g., admin, api, user, db)
+    - description must be brief, imperative, and lowercase
+    - no trailing period
+    Example: feat(admin): decrypt user email and phone before user event
   review_status: false
   full_review: true
   commit_status: true
@@ -89,6 +97,8 @@ reviews:
     issue_assessment:
       mode: warning
   tools:
+    osvScanner:
+      enabled: true
     eslint:
       enabled: true
     semgrep:

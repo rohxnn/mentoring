@@ -18,9 +18,12 @@ module.exports = class Entity {
 	 */
 
 	async create(req) {
-		const params = req.body
 		try {
-			const createdEntity = await entityService.create(params, req.decodedToken.id)
+			const createdEntity = await entityService.create(
+				req.body,
+				req.decodedToken.id,
+				req.decodedToken.tenant_code
+			)
 			return createdEntity
 		} catch (error) {
 			return error
@@ -36,10 +39,13 @@ module.exports = class Entity {
 	 */
 
 	async update(req) {
-		const params = req.body
-		const id = req.params.id
 		try {
-			const updatedEntity = await entityService.update(params, id, req.decodedToken.id)
+			const updatedEntity = await entityService.update(
+				req.body,
+				req.params.id,
+				req.decodedToken.id,
+				req.decodedToken.tenant_code
+			)
 			return updatedEntity
 		} catch (error) {
 			return error
@@ -57,9 +63,9 @@ module.exports = class Entity {
 	async read(req) {
 		try {
 			if (req.query.id || req.query.value) {
-				return await entityService.read(req.query, req.decodedToken.id)
+				return await entityService.read(req.query, req.decodedToken.id, req.decodedToken.tenant_code)
 			}
-			return await entityService.readAll(req.query, req.decodedToken.id)
+			return await entityService.readAll(req.query, req.decodedToken.id, req.decodedToken.tenant_code)
 		} catch (error) {
 			return error
 		}
@@ -75,7 +81,11 @@ module.exports = class Entity {
 
 	async delete(req) {
 		try {
-			const updatedEntity = await entityService.delete(req.params.id, req.decodedToken.id)
+			const updatedEntity = await entityService.delete(
+				req.params.id,
+				req.decodedToken.id,
+				req.decodedToken.tenant_code
+			)
 			return updatedEntity
 		} catch (error) {
 			return error
@@ -92,7 +102,13 @@ module.exports = class Entity {
 
 	async list(req) {
 		try {
-			return await entityService.list(req.query, req.searchText, req.pageNo, req.pageSize)
+			return await entityService.list(
+				req.query,
+				req.searchText,
+				req.pageNo,
+				req.pageSize,
+				req.decodedToken.tenant_code
+			)
 		} catch (error) {
 			return error
 		}

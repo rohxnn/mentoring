@@ -20,10 +20,16 @@ module.exports = class permissionData {
 
 	static async findAllPermissions(filter, attributes, options = {}) {
 		try {
+			// Safe merge: filter cannot be overridden by options.where
+			const { where: optionsWhere, ...otherOptions } = options
+
 			const permissions = await Permissions.findAndCountAll({
-				where: filter,
+				where: {
+					...optionsWhere, // Allow additional where conditions
+					...filter, // But main filter takes priority
+				},
 				attributes,
-				...options,
+				...otherOptions,
 			})
 			return permissions
 		} catch (error) {
@@ -61,7 +67,7 @@ module.exports = class permissionData {
 			const permissionData = await Permissions.findByPk(filter)
 			return permissionData
 		} catch (error) {
-			return error
+			throw error
 		}
 	}
 

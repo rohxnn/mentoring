@@ -23,7 +23,12 @@ module.exports = class Questions {
 
 	async create(req) {
 		try {
-			const createdQuestion = await questionsService.create(req.body, req.decodedToken)
+			const createdQuestion = await questionsService.create(
+				req.body,
+				req.decodedToken.id,
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
+			)
 			return createdQuestion
 		} catch (error) {
 			return error
@@ -40,7 +45,13 @@ module.exports = class Questions {
 
 	async update(req) {
 		try {
-			const updatedQuestion = await questionsService.update(req.params.id, req.body, req.decodedToken)
+			const updatedQuestion = await questionsService.update(
+				req.params.id,
+				req.body,
+				req.decodedToken.id,
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
+			)
 			return updatedQuestion
 		} catch (error) {
 			return error
@@ -57,7 +68,7 @@ module.exports = class Questions {
 
 	async read(req) {
 		try {
-			const questionData = await questionsService.read(req.params.id)
+			const questionData = await questionsService.read(req.params.id, req.decodedToken.tenant_code)
 			return questionData
 		} catch (error) {
 			return error

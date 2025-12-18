@@ -10,6 +10,7 @@ const bigBlueButtonUrl = process.env.BIG_BLUE_BUTTON_URL + process.env.BIB_BLUE_
 const request = require('@generics/requests')
 const endpoints = require('@constants/endpoints')
 const utils = require('@generics/utils')
+const userRequests = require('@requests/user')
 
 /**
  * Create Meeting.

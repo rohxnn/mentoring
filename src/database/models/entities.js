@@ -16,10 +16,14 @@ module.exports = (sequelize, DataTypes) => {
 			type: { type: DataTypes.STRING },
 			created_by: { type: DataTypes.STRING, allowNull: true },
 			updated_by: { type: DataTypes.STRING, allowNull: true },
+			tenant_code: {
+				type: DataTypes.STRING,
+				allowNull: false,
+			},
 		},
 		{ sequelize, modelName: 'Entity', tableName: 'entities', freezeTableName: true, paranoid: true }
 	)
-	/* 	Entity.associate = (models) => {
+	Entity.associate = (models) => {
 		Entity.belongsTo(models.EntityType, {
 			foreignKey: 'entity_type_id',
 			as: 'entity_type',
@@ -27,6 +31,6 @@ module.exports = (sequelize, DataTypes) => {
 				deleted_at: null, // Only associate with active EntityType records
 			},
 		})
-	} */
+	}
 	return Entity
 }

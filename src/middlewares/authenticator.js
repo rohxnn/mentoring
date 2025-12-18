@@ -10,6 +10,7 @@ const fs = require('fs')
 const MenteeExtensionQueries = require('@database/queries/userExtension')
 const utils = require('@generics/utils')
 const path = require('path')
+const cacheHelper = require('@generics/cacheHelper')
 
 module.exports = async function (req, res, next) {
 	try {
@@ -44,7 +45,6 @@ module.exports = async function (req, res, next) {
 
 		// Check if config.json exists
 		if (fs.existsSync(configFilePath)) {
-			console.log(' config exit')
 			// Read and parse the config.json file
 			const rawData = fs.readFileSync(configFilePath)
 			try {
@@ -104,13 +104,24 @@ module.exports = async function (req, res, next) {
 						continue
 					}
 
+					if (key === 'organization_code') {
+						let orgId = getOrgId(req.headers, decodedToken, configData[organizationKey])
+
+						// Now extract roles using fully dynamic path
+						const rolePathTemplate = configData['organization_code']
+
+						decodedToken[organizationKey] = orgId
+						const resolvedOrgPath = resolvePathTemplate(rolePathTemplate, decodedToken)
+						const org = getNestedValue(decodedToken, resolvedOrgPath) || []
+						req.decodedToken[key] = org
+						continue
+					}
+
 					// For each key in config, assign the corresponding value from decodedToken
 					req.decodedToken[key] = keyValue
 				}
 			}
 		}
-
-		console.log(' decoded tokenen ', req.decodedToken)
 
 		req.decodedToken.id =
 			typeof req.decodedToken?.id === 'number' ? req.decodedToken?.id?.toString() : req.decodedToken?.id
@@ -119,7 +130,6 @@ module.exports = async function (req, res, next) {
 				? req.decodedToken?.organization_id?.toString()
 				: req.decodedToken?.organization_id
 
-		console.log(' req decoded tokenen ', req.decodedToken)
 		if (!req.decodedToken[organizationKey]) {
 			throw createUnauthorizedResponse()
 		}
@@ -168,7 +178,6 @@ module.exports = async function (req, res, next) {
 			if (!isPermissionValid) throw createUnauthorizedResponse('PERMISSION_DENIED')
 		}
 
-		console.log('DECODED TOKEN:', req.decodedToken)
 		next()
 	} catch (err) {
 		if (err.message === 'USER_SERVICE_DOWN') {
@@ -260,9 +269,53 @@ function getApiPaths(parts) {
 
 async function fetchPermissions(roleTitle, apiPath, module) {
 	if (Array.isArray(roleTitle) && !roleTitle.includes(common.PUBLIC_ROLE)) roleTitle.push(common.PUBLIC_ROLE)
-	const filter = { role_title: roleTitle, module, api_path: { [Op.in]: apiPath } }
-	const attributes = ['request_type', 'api_path', 'module']
-	return await rolePermissionMappingQueries.findAll(filter, attributes)
+
+	const roles = Array.isArray(roleTitle) ? roleTitle : [roleTitle]
+	const apiPaths = Array.isArray(apiPath) ? apiPath : [apiPath]
+
+	// Try to get cached permissions for all role-path combinations (global cache)
+	const cachedPermissions = await cacheHelper.apiPermissions.getMultipleRoles(roles, module, apiPaths)
+
+	// Check if we have all required role/path combinations cached
+	const requiredKeys = new Set()
+	roles.forEach((role) => {
+		apiPaths.forEach((path) => requiredKeys.add(`${role}::${path}`))
+	})
+
+	const permissionsFromCache = cachedPermissions || []
+	permissionsFromCache.forEach((permission) =>
+		requiredKeys.delete(`${permission.role_title}::${permission.api_path}`)
+	)
+
+	// If all combinations are cached, return them
+	if (requiredKeys.size === 0) {
+		return permissionsFromCache
+	}
+
+	// Only query DB if there are actually missing combinations
+	let dbPermissions = []
+	if (requiredKeys.size > 0) {
+		// Build precise filter for only the missing role-path combinations
+		const filter = {
+			[Op.or]: Array.from(requiredKeys).map((key) => {
+				const [role, path] = key.split('::')
+				return { role_title: role, module, api_path: path }
+			}),
+		}
+		const attributes = ['request_type', 'api_path', 'module', 'role_title']
+		dbPermissions = (await rolePermissionMappingQueries.findAll(filter, attributes)) || []
+
+		// Cache the newly fetched results
+		if (dbPermissions.length > 0) {
+			// Extract unique API paths for caching
+			const missingApiPaths = [...new Set(Array.from(requiredKeys).map((key) => key.split('::')[1]))]
+			await cacheHelper.apiPermissions.setFromDatabaseResults(module, missingApiPaths, dbPermissions)
+		}
+	}
+
+	// Merge cached and database results
+	const allPermissions = [...permissionsFromCache, ...(dbPermissions || [])]
+	return allPermissions
 }
 
 async function verifyToken(token) {
@@ -270,7 +323,7 @@ async function verifyToken(token) {
 		return jwt.verify(token, process.env.ACCESS_TOKEN_SECRET)
 	} catch (err) {
 		if (err.name === 'TokenExpiredError') throw createUnauthorizedResponse('ACCESS_TOKEN_EXPIRED')
-		console.log(err)
+
 		throw createUnauthorizedResponse()
 	}
 }
@@ -293,6 +346,7 @@ async function fetchUserProfile(authHeader) {
 	const user = await requests.get(profileUrl, authHeader, false)
 
 	if (!user || !user.success) throw createUnauthorizedResponse('USER_NOT_FOUND')
+	if (!user.data || !user.data.result) throw createUnauthorizedResponse('USER_NOT_FOUND')
 	if (user.data.result.deleted_at !== null) throw createUnauthorizedResponse('USER_ROLE_UPDATED')
 	return user.data.result
 }
@@ -304,9 +358,15 @@ function isMentorRole(roles) {
 async function dbBasedRoleValidation(decodedToken) {
 	const userId = decodedToken.data.id
 	const roles = decodedToken.data.roles
+	const tenantCode = decodedToken.data.tenant_code
 	const isMentor = isMentorRole(roles)
 
-	const menteeExtension = await MenteeExtensionQueries.getMenteeExtension(userId.toString(), ['user_id', 'is_mentor'])
+	const menteeExtension = await MenteeExtensionQueries.getMenteeExtension(
+		userId.toString(),
+		['user_id', 'is_mentor'],
+		false,
+		tenantCode
+	)
 	if (!menteeExtension) throw createUnauthorizedResponse('USER_NOT_FOUND')
 
 	const roleMismatch = (isMentor && !menteeExtension.is_mentor) || (!isMentor && menteeExtension.is_mentor)
@@ -412,7 +472,6 @@ async function keycloakPublicKeyAuthentication(token) {
 	} catch (err) {
 		if (err.message === 'USER_NOT_FOUND') throw createUnauthorizedResponse('USER_NOT_FOUND')
 		else {
-			console.error(err)
 			throw createUnauthorizedResponse()
 		}
 	}
@@ -423,7 +482,7 @@ async function verifyKeycloakToken(token, cert) {
 		return jwt.verify(token, cert, { algorithms: ['sha1', 'RS256', 'HS256'] })
 	} catch (err) {
 		if (err.name === 'TokenExpiredError') throw createUnauthorizedResponse('ACCESS_TOKEN_EXPIRED')
-		console.error(err)
+
 		throw createUnauthorizedResponse()
 	}
 }

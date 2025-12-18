@@ -6,7 +6,7 @@ module.exports = class QuestionsData {
 			const question = await Question.create(data, { returning: true })
 			return question
 		} catch (error) {
-			return error
+			throw error
 		}
 	}
 
@@ -19,7 +19,7 @@ module.exports = class QuestionsData {
 			})
 			return questionData
 		} catch (error) {
-			return error
+			throw error
 		}
 	}
 
@@ -32,15 +32,21 @@ module.exports = class QuestionsData {
 			})
 			return questionData
 		} catch (error) {
-			return error
+			throw error
 		}
 	}
 
 	static async updateOneQuestion(filter, update, options = {}) {
 		try {
+			// Safe merge: options.where cannot override the main filter
+			const { where: optionsWhere, ...otherOptions } = options
+
 			const [rowsAffected] = await Question.update(update, {
-				where: filter,
-				...options,
+				where: {
+					...optionsWhere, // Allow additional where conditions
+					...filter, // But main filter takes priority
+				},
+				...otherOptions,
 			})
 
 			return rowsAffected > 0 ? 'QUESTION_UPDATED' : 'QUESTION_NOT_FOUND'
@@ -60,7 +66,7 @@ module.exports = class QuestionsData {
 				return 'QUESTION_NOT_FOUND'
 			}
 		} catch (error) {
-			return error
+			throw error
 		}
 	}
 	static async updateData(filter, update, options = {}) {
@@ -74,7 +80,7 @@ module.exports = class QuestionsData {
 				return 'QUESTION_NOT_FOUND'
 			}
 		} catch (error) {
-			return error
+			throw error
 		}
 	}
 }

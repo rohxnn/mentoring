@@ -1,20 +1,47 @@
 const SessionAttendee = require('@database/models/index').SessionAttendee
-const { Op } = require('sequelize')
-const SessionEnrollment = require('@database/models/index').SessionEnrollment
+const { Op, col } = require('sequelize')
 
-exports.create = async (data) => {
+exports.create = async (data, tenantCode) => {
 	try {
+		data.tenant_code = tenantCode
 		return await SessionAttendee.create(data)
 	} catch (error) {
 		return error
 	}
 }
 
-exports.findOne = async (filter, options = {}) => {
+exports.findOrCreateAttendee = async (data, tenantCode) => {
 	try {
+		data.tenant_code = tenantCode
+		// Sequelize approach: Atomic find or create - eliminates separate existence check
+		const [attendee, created] = await SessionAttendee.findOrCreate({
+			where: {
+				session_id: data.session_id,
+				mentee_id: data.mentee_id,
+				tenant_code: tenantCode,
+			},
+			defaults: data, // Data to use if creating new record
+		})
+
+		return { attendee, created }
+	} catch (error) {
+		return error
+	}
+}
+
+exports.findOne = async (filter, tenantCode, options = {}) => {
+	try {
+		filter.tenant_code = tenantCode
+
+		// Safe merge: tenant filtering cannot be overridden by options.where
+		const { where: optionsWhere, ...otherOptions } = options
+
 		const res = await SessionAttendee.findOne({
-			where: filter,
-			...options,
+			where: {
+				...optionsWhere, // Allow additional where conditions
+				...filter, // But tenant filtering takes priority
+			},
+			...otherOptions,
 			raw: true,
 		})
 		return res
@@ -23,25 +50,33 @@ exports.findOne = async (filter, options = {}) => {
 	}
 }
 
-exports.updateOne = async (filter, update, options = {}) => {
+exports.updateOne = async (filter, update, tenantCode, options = {}) => {
 	try {
+		filter.tenant_code = tenantCode
+
+		// Safe merge: tenant filtering cannot be overridden by options.where
+		const { where: optionsWhere, ...otherOptions } = options
+
 		return await SessionAttendee.update(update, {
-			where: filter,
-			...options,
+			where: {
+				...optionsWhere, // Allow additional where conditions
+				...filter, // But tenant filtering takes priority
+			},
+			...otherOptions,
 			individualHooks: true,
 		})
 	} catch (error) {
-		console.error(error)
 		return error
 	}
 }
 
-exports.unEnrollFromSession = async (sessionId, userId) => {
+exports.unEnrollFromSession = async (sessionId, userId, tenantCode) => {
 	try {
 		const result = await SessionAttendee.destroy({
 			where: {
 				session_id: sessionId,
 				mentee_id: userId,
+				tenant_code: tenantCode,
 			},
 			force: true, // Setting force to true for a hard delete
 		})
@@ -52,11 +87,22 @@ exports.unEnrollFromSession = async (sessionId, userId) => {
 	}
 }
 
-exports.findAll = async (filter, options = {}) => {
+exports.findAll = async (filter, tenantCode, options = {}) => {
 	try {
+		if (!tenantCode) {
+			throw new Error('tenantCode is required')
+		}
+		filter.tenant_code = tenantCode
+
+		// Safe merge: tenant filtering cannot be overridden by options.where
+		const { where: optionsWhere, ...otherOptions } = options
+
 		return await SessionAttendee.findAll({
-			where: filter,
-			...options,
+			where: {
+				...optionsWhere, // Allow additional where conditions
+				...filter, // But tenant filtering takes priority
+			},
+			...otherOptions,
 			raw: true,
 		})
 	} catch (error) {
@@ -64,163 +110,151 @@ exports.findAll = async (filter, options = {}) => {
 	}
 }
 
-exports.unEnrollAllAttendeesOfSessions = async (sessionIds) => {
+exports.unEnrollAllAttendeesOfSessions = async (sessionIds, tenantCode) => {
 	try {
+		if (!tenantCode) {
+			throw new Error('tenantCode is required')
+		}
+		const recordsToDelete = await SessionAttendee.findAll({
+			where: {
+				session_id: { [Op.in]: sessionIds },
+				tenant_code: tenantCode,
+			},
+			raw: true, // optional, returns plain objects
+		})
+
+		// If nothing found
+		if (!recordsToDelete.length) {
+			return {
+				deletedCount: 0,
+				deletedRecords: [],
+			}
+		}
+
 		const destroyedCount = await SessionAttendee.destroy({
 			where: {
 				session_id: { [Op.in]: sessionIds },
+				tenant_code: tenantCode,
 			},
 		})
-		await SessionEnrollment.destroy({
-			where: {
-				session_id: { [Op.in]: sessionIds },
-			},
-		})
-
-		return destroyedCount
+		return {
+			deletedCount: destroyedCount,
+			deletedRecords: recordsToDelete,
+		}
 	} catch (error) {
-		console.error('An error occurred:', error)
-		throw error
+		return error
 	}
 }
 
-exports.usersUpcomingSessions = async (userId, sessionIds) => {
+exports.usersUpcomingSessions = async (userId, sessionIds, tenantCode) => {
 	try {
+		if (!tenantCode) {
+			throw new Error('tenantCode is required')
+		}
+		const filter = {
+			session_id: sessionIds,
+			mentee_id: userId,
+		}
+		filter.tenant_code = tenantCode
 		return await SessionAttendee.findAll({
-			where: {
-				session_id: sessionIds,
-				mentee_id: userId,
-			},
+			where: filter,
 			raw: true,
 		})
 	} catch (error) {
-		console.error('An error occurred:', error)
-		throw error
+		return error
 	}
 }
 
-exports.unenrollFromUpcomingSessions = async (userId, sessionIds) => {
+exports.unenrollFromUpcomingSessions = async (userId, sessionIds, tenantCode) => {
 	try {
 		const result = await SessionAttendee.destroy({
 			where: {
 				session_id: sessionIds,
 				mentee_id: userId,
-			},
-		})
-		await SessionEnrollment.destroy({
-			where: {
-				session_id: sessionIds,
-				mentee_id: userId,
+				tenant_code: tenantCode,
 			},
 		})
 		return result
 	} catch (error) {
-		console.error('An error occurred:', error)
-		throw error
+		return error
 	}
 }
 
-exports.removeUserFromAllSessions = async (userId) => {
+exports.removeUserFromAllSessions = async (userId, tenantCode) => {
 	try {
 		// Remove from session attendees (all sessions)
 		const attendeeResult = await SessionAttendee.destroy({
 			where: {
 				mentee_id: userId,
+				tenant_code: tenantCode,
 			},
 		})
 
-		// Remove from session enrollments (all sessions)
-		const enrollmentResult = await SessionEnrollment.destroy({
-			where: {
-				mentee_id: userId,
-			},
-		})
-
-		return { attendeeResult, enrollmentResult }
+		return { attendeeResult }
 	} catch (error) {
-		return error
+		console.error('Error in removeUserFromAllSessions:', error)
+		return { attendeeResult: -1 }
 	}
 }
-exports.countEnrolledSessions = async (mentee_id) => {
+exports.countEnrolledSessions = async (mentee_id, tenantCode) => {
 	try {
-		let sessionEnrollments = await SessionEnrollment.findAll({
-			where: {
-				mentee_id: mentee_id,
+		const whereClause = {
+			mentee_id: mentee_id,
+			joined_at: {
+				[Op.not]: null,
 			},
-		})
-		const sessionIds = sessionEnrollments.map((enrollment) => enrollment.session_id)
-		if (sessionIds.length <= 0) {
-			return 0
 		}
+
+		if (tenantCode) {
+			whereClause.tenant_code = tenantCode
+		}
+
 		return await SessionAttendee.count({
-			where: {
-				joined_at: {
-					[Op.not]: null,
-				},
-				session_id: sessionIds,
-			},
+			where: whereClause,
 		})
 	} catch (error) {
 		return error
 	}
 }
 
-exports.getEnrolledSessionsCountInDateRange = async (startDate, endDate, mentee_id) => {
+exports.getEnrolledSessionsCountInDateRange = async (startDate, endDate, mentee_id, tenantCode) => {
 	try {
-		let sessionEnrollments = await SessionEnrollment.findAll({
+		// Count session attendees created in date range
+		const count = await SessionAttendee.count({
 			where: {
+				created_at: { [Op.between]: [startDate, endDate] },
 				mentee_id: mentee_id,
+				tenant_code: tenantCode,
 			},
 		})
-		const sessionIds = sessionEnrollments.map((enrollment) => enrollment.session_id)
-		if (sessionIds.length <= 0) {
-			return 0
-		}
-		return await SessionAttendee.count({
-			where: {
-				created_at: {
-					[Op.between]: [startDate, endDate],
-				},
-				session_id: sessionIds,
-				mentee_id: mentee_id,
-			},
-		})
+		return count || 0
 	} catch (error) {
 		return error
 	}
 }
 
-exports.getAttendedSessionsCountInDateRange = async (startDate, endDate, mentee_id) => {
+exports.getAttendedSessionsCountInDateRange = async (startDate, endDate, mentee_id, tenantCode) => {
 	try {
-		let sessionEnrollments = await SessionEnrollment.findAll({
+		// Count session attendees who joined in date range
+		const count = await SessionAttendee.count({
 			where: {
+				joined_at: { [Op.between]: [startDate, endDate] },
 				mentee_id: mentee_id,
+				tenant_code: tenantCode,
 			},
 		})
-		const sessionIds = sessionEnrollments.map((enrollment) => enrollment.session_id)
-		if (sessionIds.length <= 0) {
-			return 0
-		}
-		return await SessionAttendee.count({
-			where: {
-				joined_at: {
-					[Op.between]: [startDate, endDate],
-				},
-				session_id: sessionIds,
-				mentee_id: mentee_id,
-			},
-		})
+		return count || 0
 	} catch (error) {
-		console.error(error)
 		return error
 	}
 }
-exports.findAttendeeBySessionAndUserId = async (id, sessionId) => {
+exports.findAttendeeBySessionAndUserId = async (id, sessionId, tenantCode) => {
 	try {
 		const attendee = await SessionAttendee.findOne({
 			where: {
 				mentee_id: id,
 				session_id: sessionId,
+				tenant_code: tenantCode,
 			},
 			raw: true,
 		})
@@ -229,24 +263,38 @@ exports.findAttendeeBySessionAndUserId = async (id, sessionId) => {
 		return error
 	}
 }
-exports.findPendingFeedbackSessions = async (menteeId, completedSessionIds) => {
+exports.findPendingFeedbackSessions = async (menteeId, completedSessionIds, tenantCode) => {
 	try {
-		let sessionEnrollments = await SessionEnrollment.findAll({
+		if (!tenantCode) {
+			throw new Error('tenantCode is required')
+		}
+
+		// Get all session attendee records for the mentee
+		let allSessionAttendees = await SessionAttendee.findAll({
 			where: {
 				mentee_id: menteeId,
+				tenant_code: tenantCode,
 			},
+			raw: true,
 		})
-		const sessionIds = sessionEnrollments.map((enrollment) => enrollment.session_id)
-		const filteredSessionIds = sessionIds.filter((sessionId) => !completedSessionIds.includes(sessionId))
-		return await SessionAttendee.findAll({
-			where: {
-				mentee_id: menteeId,
-				joined_at: {
-					[Op.not]: null,
-				},
-				is_feedback_skipped: false,
-				session_id: filteredSessionIds,
+
+		// Get session IDs excluding those already with feedback
+		const allSessionIds = allSessionAttendees.map((attendee) => attendee.session_id)
+		const filteredSessionIds = allSessionIds.filter((sessionId) => !completedSessionIds.includes(sessionId))
+
+		// Find attendees who actually joined and haven't skipped feedback
+		const filter = {
+			mentee_id: menteeId,
+			joined_at: {
+				[Op.not]: null,
 			},
+			is_feedback_skipped: false,
+			session_id: filteredSessionIds,
+			tenant_code: tenantCode,
+		}
+
+		return await SessionAttendee.findAll({
+			where: filter,
 			raw: true,
 		})
 	} catch (error) {
@@ -261,6 +309,6 @@ exports.getCount = async (filter = {}, options = {}) => {
 			...options,
 		})
 	} catch (error) {
-		throw error
+		return error
 	}
 }

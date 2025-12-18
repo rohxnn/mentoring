@@ -3,6 +3,7 @@ const responses = require('@helpers/responses')
 const defaultSearchConfig = require('@configs/search.json')
 const { convertKeysToSnakeCase } = require('@generics/utils')
 const searchConfig = require('@root/config.json')
+const cacheHelper = require('@generics/cacheHelper')
 
 module.exports = class platformHelper {
 	/**
@@ -15,8 +16,19 @@ module.exports = class platformHelper {
 	 * @returns {Promise<Object>} - A promise that resolves with the application configuration.
 	 * @throws {Error} - Throws an error if there's an issue during configuration retrieval.
 	 */
-	static async getConfig() {
+	static async getConfig(tenantCode, orgCode) {
 		try {
+			// Check cache first
+			const cachedConfig = await cacheHelper.platformConfig.get(tenantCode, orgCode)
+			if (cachedConfig) {
+				return responses.successResponse({
+					statusCode: httpStatusCode.ok,
+					message: 'APP_CONFIG_FETCHED_SUCCESSFULLY',
+					result: cachedConfig,
+				})
+			}
+
+			// Build config from environment variables and files
 			let search_config = defaultSearchConfig
 			if (searchConfig.search) {
 				search_config = { search: searchConfig.search }
@@ -29,8 +41,11 @@ module.exports = class platformHelper {
 				chat_config: process.env.ENABLE_CHAT,
 			}
 
+			// Cache the config with tenant/org context
+			await cacheHelper.platformConfig.set(tenantCode, orgCode, config)
+
 			return responses.successResponse({
-				statusCode: httpStatusCode.created,
+				statusCode: httpStatusCode.ok,
 				message: 'APP_CONFIG_FETCHED_SUCCESSFULLY',
 				result: config,
 			})

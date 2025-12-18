@@ -1,15 +1,21 @@
 'use strict'
 const OrganizationExtension = require('@database/models/index').OrganizationExtension
+const MenteeExtension = require('@database/models/index').UserExtension
+const { QueryTypes } = require('sequelize')
+const Sequelize = require('@database/models/index').sequelize
 const common = require('@constants/common')
+const utils = require('@generics/utils')
 
 module.exports = class OrganizationExtensionQueries {
-	static async upsert(data) {
+	static async upsert(data, tenantCode) {
 		try {
-			if (!data.organization_id) throw new Error('organization_id Missing')
+			if (!data.organization_code) throw new Error('organization_code Missing')
+			data.tenant_code = tenantCode
 			const [orgPolicies] = await OrganizationExtension.upsert(data, {
 				returning: true,
 				where: {
-					organization_id: data.organization_id,
+					organization_code: data.organization_code,
+					tenant_code: tenantCode,
 				},
 			})
 			return orgPolicies
@@ -18,11 +24,12 @@ module.exports = class OrganizationExtensionQueries {
 		}
 	}
 
-	static async getById(orgId) {
+	static async getById(orgCode, tenantCode) {
 		try {
 			const orgPolicies = await OrganizationExtension.findOne({
 				where: {
-					organization_id: orgId,
+					organization_code: orgCode,
+					tenant_code: tenantCode,
 				},
 				raw: true,
 			})
@@ -40,20 +47,23 @@ module.exports = class OrganizationExtensionQueries {
 	 * @throws {Error} If organizationId is missing or if an error occurs during the operation.
 	 */
 
-	static async findOrInsertOrganizationExtension(organizationId, organization_name) {
+	static async findOrInsertOrganizationExtension(organizationId, organizationCode, organization_name, tenantCode) {
 		try {
-			if (!organizationId) {
-				throw new Error('organization Id Missing')
+			if (!organizationCode) {
+				throw new Error('organization_code Missing')
 			}
 
 			const data = common.getDefaultOrgPolicies()
 			data.organization_id = organizationId
+			data.organization_code = organizationCode
 			data.name = organization_name
+			data.tenant_code = tenantCode
 
 			// Try to find the data, and if it doesn't exist, create it
 			const [orgPolicies, created] = await OrganizationExtension.findOrCreate({
 				where: {
-					organization_id: organizationId,
+					organization_code: organizationCode,
+					tenant_code: tenantCode,
 				},
 				defaults: data,
 			})
@@ -66,9 +76,15 @@ module.exports = class OrganizationExtensionQueries {
 
 	static async findAll(filter, options = {}) {
 		try {
+			// Safe merge: options.where cannot override the main filter
+			const { where: optionsWhere, ...otherOptions } = options
+
 			const orgExtensions = await OrganizationExtension.findAll({
-				where: filter,
-				...options,
+				where: {
+					...optionsWhere, // Allow additional where conditions
+					...filter, // But main filter takes priority
+				},
+				...otherOptions,
 				raw: true,
 			})
 			return orgExtensions
@@ -76,11 +92,22 @@ module.exports = class OrganizationExtensionQueries {
 			throw new Error(`Error fetching organisation extension: ${error.message}`)
 		}
 	}
-	static async findOne(filter, options = {}) {
+	static async findOne(filter, tenantCode, options = {}) {
 		try {
+			// Only add tenant_code to filter if tenantCode is provided
+			if (tenantCode) {
+				filter.tenant_code = tenantCode
+			}
+
+			// Safe merge: tenant filtering cannot be overridden by options.where
+			const { where: optionsWhere, ...otherOptions } = options
+
 			const orgExtension = await OrganizationExtension.findOne({
-				where: filter,
-				...options,
+				where: {
+					...optionsWhere, // Allow additional where conditions
+					...filter, // But tenant filtering takes priority
+				},
+				...otherOptions,
 				raw: true,
 			})
 			return orgExtension
@@ -89,8 +116,9 @@ module.exports = class OrganizationExtensionQueries {
 		}
 	}
 
-	static async create(data, options = {}) {
+	static async create(data, tenantCode, options = {}) {
 		try {
+			data.tenant_code = tenantCode
 			const newOrgExtension = await OrganizationExtension.create(data, options)
 			return newOrgExtension
 		} catch (error) {
@@ -98,14 +126,15 @@ module.exports = class OrganizationExtensionQueries {
 		}
 	}
 
-	static async update(data, organization_id) {
+	static async update(data, organization_code, tenantCode) {
 		try {
-			if (!organization_id) {
-				throw new Error('Missing organization_id in data')
+			if (!organization_code) {
+				throw new Error('Missing organization_code in data')
 			}
 			const [updatedRecords] = await OrganizationExtension.update(data, {
 				where: {
-					organization_id: organization_id,
+					organization_code: organization_code,
+					tenant_code: tenantCode,
 				},
 				returning: true,
 			})
@@ -115,13 +144,14 @@ module.exports = class OrganizationExtensionQueries {
 		}
 	}
 
-	static async getAllByIds(ids) {
+	static async getAllByIds(codes, tenantCode) {
 		try {
-			const filterClause = `organization_id IN (${ids.map((id) => `'${id}'`).join(',')})`
+			const filterClause = `organization_code IN (${codes.map((code) => `'${code}'`).join(',')})`
 
+			const viewName = utils.getTenantViewName(tenantCode, MenteeExtension.tableName)
 			const query = `
 				SELECT *
-				FROM ${common.materializedViewsPrefix + MenteeExtension.tableName}
+				FROM ${viewName}
 				WHERE
 					${filterClause}
 				`

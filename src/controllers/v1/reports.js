@@ -21,7 +21,8 @@ module.exports = class Reports {
 				req.query.entity_types ? req.query.entity_types : '',
 				req.query.filter_type ? req.query.filter_type : '',
 				req.decodedToken,
-				req.query.report_filter ? req.query.report_filter : ''
+				req.query.report_filter ? req.query.report_filter : '',
+				req.decodedToken.tenant_code
 			)
 			return reportFilterList
 		} catch (error) {
@@ -36,7 +37,7 @@ module.exports = class Reports {
 	 * @param {Object} req - Request data object.
 	 * @param {Object} req.query - Query parameters.
 	 * @param {String} req.query.decodedToken.id - User ID from the decoded token.
-	 * @param {String} req.query.decodedToken.organization_id - Organization ID from the decoded token.
+	 * @param {String} req.query.decodedToken.organization_code - Organization code from the decoded token.
 	 * @param {Number} [req.query.pageNo=1] - Page number for pagination (default is 1).
 	 * @param {Number} [req.query.Limit=10] - Number of items per page (default is 10).
 	 * @param {String} req.query.report_code - Code for the report type.
@@ -110,7 +111,7 @@ module.exports = class Reports {
 			// Call the report service with the transformed data
 			const reportData = await reportService.getReportData(
 				req.decodedToken.id,
-				req.decodedToken.organization_id,
+				req.decodedToken.organization_code,
 				req.query.pageNo ? req.query.pageNo : common.pagination.DEFAULT_PAGE_NO,
 				req.query.Limit ? req.query.Limit : common.pagination.DEFAULT_LIMIT,
 				req.query.report_code,
@@ -128,8 +129,8 @@ module.exports = class Reports {
 				req.query.group_by ? req.query.group_by : 'month',
 				filter_column.length > 0 ? filter_column : undefined, // Pass filter_column only if it's not empty
 				filter_value.length > 0 ? filter_value : undefined, // Pass filter_value only if it's not empty
-				req.headers['timezone']
-
+				req.headers.timezone,
+				req.decodedToken.tenant_code
 			)
 			return reportData
 		} catch (error) {
@@ -139,7 +140,12 @@ module.exports = class Reports {
 
 	async create(req) {
 		try {
-			const createReport = await reportService.createReport(req.body)
+			const createReport = await reportService.createReport(
+				req.body,
+				req.decodedToken.organization_id,
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
+			)
 			return createReport
 		} catch (error) {
 			return error
@@ -148,7 +154,7 @@ module.exports = class Reports {
 
 	async read(req) {
 		try {
-			const getReportById = await reportService.getReportById(req.query.id)
+			const getReportById = await reportService.getReportById(req.query.id, req.decodedToken.tenant_code)
 			return getReportById
 		} catch (error) {
 			return error
@@ -157,7 +163,13 @@ module.exports = class Reports {
 
 	async update(req) {
 		try {
-			const updatedReport = await reportService.updateReport(req.query.id, req.body)
+			const updatedReport = await reportService.updateReport(
+				req.query.id,
+				req.body,
+				req.decodedToken.organization_id,
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
+			)
 			return updatedReport
 		} catch (error) {
 			return error
@@ -166,7 +178,7 @@ module.exports = class Reports {
 
 	async delete(req) {
 		try {
-			const deleteReport = await reportService.deleteReportById(req.query.id)
+			const deleteReport = await reportService.deleteReportById(req.query.id, req.decodedToken.tenant_code)
 			return deleteReport
 		} catch (error) {
 			return error

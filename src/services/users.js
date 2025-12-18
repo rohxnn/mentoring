@@ -12,6 +12,7 @@ const menteesService = require('@services/mentees')
 const orgAdminService = require('@services/org-admin')
 
 const userServiceHelper = require('@helpers/users')
+const cacheHelper = require('@generics/cacheHelper')
 
 module.exports = class UserHelper {
 	/**
@@ -26,26 +27,34 @@ module.exports = class UserHelper {
 	 * @returns {JSON} 							- User list.
 	 */
 
-	static async list(userType, pageNo, pageSize, searchText) {
+	static async list(userType, pageNo, pageSize, searchText, userId, organizationId, tenantCode) {
 		try {
-			const userDetails = await userRequests.list(userType, pageNo, pageSize, searchText)
-			const ids = userDetails.data.result.data.map((item) => item.values[0].id)
+			const userDetails = await userRequests.list(userType, pageNo, pageSize, searchText, tenantCode)
+			const ids = userDetails.result.data.map((item) => item.values[0].id)
 
 			let extensionDetails
 			if (userType == common.MENTEE_ROLE) {
-				extensionDetails = await menteeQueries.getUsersByUserIds(ids, {
-					attributes: ['user_id', 'rating'],
-				})
+				extensionDetails = await menteeQueries.getUsersByUserIds(
+					ids,
+					{
+						attributes: ['user_id', 'rating'],
+					},
+					tenantCode
+				)
 			} else if (userType == common.MENTOR_ROLE) {
-				extensionDetails = await mentorQueries.getMentorsByUserIds(ids, {
-					attributes: ['user_id', 'rating', 'mentor_visibility', 'organization_id'],
-				})
+				extensionDetails = await mentorQueries.getMentorsByUserIds(
+					ids,
+					{
+						attributes: ['user_id', 'rating', 'mentor_visibility', 'organization_id'],
+					},
+					tenantCode
+				)
 				// Inside your function
 				extensionDetails = extensionDetails.filter((item) => item.mentor_visibility && item.organization_id)
 			}
 			const extensionDataMap = new Map(extensionDetails.map((newItem) => [newItem.user_id, newItem]))
 
-			userDetails.data.result.data = userDetails.data.result.data.filter((existingItem) => {
+			userDetails.result.data = userDetails.result.data.filter((existingItem) => {
 				const user_id = existingItem.values[0].id
 				if (extensionDataMap.has(user_id)) {
 					const newItem = extensionDataMap.get(user_id)
@@ -61,62 +70,62 @@ module.exports = class UserHelper {
 
 			return responses.successResponse({
 				statusCode: httpStatusCode.ok,
-				message: userDetails.data.message,
-				result: userDetails.data.result,
+				message: userDetails.message,
+				result: userDetails.result,
 			})
 		} catch (error) {
-			console.log(error)
 			throw error
 		}
 	}
 
-	static async create(decodedToken) {
+	static async create(decodedToken, userId, organizationId, tenantCode) {
 		try {
-			const isNewUser = await this.#checkUserExistence(decodedToken.id)
+			const isNewUser = await this.#checkUserExistence(decodedToken.id, decodedToken.tenant_code)
 			if (isNewUser) {
-				const result = await this.#createOrUpdateUserAndOrg(decodedToken.id, isNewUser)
+				const result = await this.#createOrUpdateUserAndOrg(decodedToken.id, isNewUser, decodedToken)
 				return result
 			} else {
-				const menteeExtension = await menteeQueries.getMenteeExtension(decodedToken.id)
-
-				if (!menteeExtension) {
-					return responses.failureResponse({
-						statusCode: httpStatusCode.not_found,
-						message: 'USER_NOT_FOUND',
-					})
-				}
-
-				return responses.successResponse({
-					statusCode: httpStatusCode.ok,
-					message: 'USER_DETAILS_FETCHED_SUCCESSFULLY',
-					result: menteeExtension,
+				// Skip cache during user creation - get fresh data from database
+				let menteeExtension = await menteeQueries.findOne(
+					{ user_id: decodedToken.id },
+					decodedToken.tenant_code
+				)
+			}
+			if (!menteeExtension) {
+				return responses.failureResponse({
+					statusCode: httpStatusCode.not_found,
+					message: 'USER_NOT_FOUND',
 				})
 			}
+
+			return responses.successResponse({
+				statusCode: httpStatusCode.ok,
+				message: 'USER_DETAILS_FETCHED_SUCCESSFULLY',
+				result: menteeExtension,
+			})
 		} catch (error) {
-			console.log(error)
 			throw error
 		}
 	}
 
-	static async update(updateData) {
+	static async update(updateData, decodedToken, userId, organizationId, tenantCode) {
 		try {
 			const userId = updateData.userId
 
-			const isNewUser = await this.#checkUserExistence(userId)
+			const isNewUser = await this.#checkUserExistence(userId, decodedToken.tenant_code)
 			const result = await this.#createOrUpdateUserAndOrg(userId, isNewUser, undefined, updateData?.tenantCode)
 			return result
 		} catch (error) {
-			console.log(error)
 			throw error
 		}
 	}
 
-	static async add(bodyData) {
+	static async add(bodyData, userId, organizationId, tenantCode) {
 		bodyData.id = bodyData.id.toString()
 		let result = {}
-		const isNewUser = await this.#checkUserExistence(bodyData.id)
+		const isNewUser = await this.#checkUserExistence(bodyData.id, tenantCode)
 		if (isNewUser) {
-			result = await this.#createUserWithBody(bodyData)
+			result = await this.#createUserWithBody(bodyData, tenantCode)
 		} else {
 			bodyData.new_roles = bodyData.newValues?.organizations?.[0]?.roles ?? []
 			const targetHasMentorRole = bodyData.new_roles.some((role) => role.title === common.MENTOR_ROLE)
@@ -125,8 +134,20 @@ module.exports = class UserHelper {
 		return result
 	}
 
-	static async #createUserWithBody(userBody) {
-		const orgExtension = await this.#createOrUpdateOrg({ id: userBody.organization_id.toString() })
+	static async #createUserWithBody(userBody, tenantCode) {
+		let orgId = userBody.organization_id
+		let orgCode = userBody.organizations[0].code
+
+		// Check if orgId exists before calling toString()
+		if (!orgId) {
+			return responses.failureResponse({
+				message: 'ORGANIZATION_ID_REQUIRED',
+				statusCode: httpStatusCode.bad_request,
+				responseCode: 'CLIENT_ERROR',
+			})
+		}
+
+		const orgExtension = await this.#createOrUpdateOrg({ id: orgId.toString(), code: orgCode }, tenantCode)
 
 		if (!orgExtension) {
 			return responses.failureResponse({
@@ -137,7 +158,7 @@ module.exports = class UserHelper {
 		}
 		const userExtensionData = this.#getExtensionData(userBody, orgExtension)
 
-		const createResult = await this.#createUser({ ...userExtensionData, roles: userBody.roles })
+		const createResult = await this.#createUser({ ...userExtensionData, roles: userBody.roles }, tenantCode)
 
 		if (createResult.statusCode != httpStatusCode.ok) return createResult
 		else
@@ -167,7 +188,10 @@ module.exports = class UserHelper {
 			})
 		}
 
-		const orgExtension = await this.#createOrUpdateOrg({ id: userDetails.data.result.organization_id })
+		const orgExtension = await this.#createOrUpdateOrg(
+			{ id: userDetails.data.result.organization.id, code: userDetails.data.result.organization.code },
+			decodedToken.tenant_code
+		)
 
 		if (!orgExtension) {
 			return responses.failureResponse({
@@ -178,8 +202,8 @@ module.exports = class UserHelper {
 		}
 		const userExtensionData = this.#getExtensionData(userDetails.data.result, orgExtension)
 		const createOrUpdateResult = isNewUser
-			? await this.#createUser(userExtensionData)
-			: await this.#updateUser(userExtensionData, targetHasMentorRole)
+			? await this.#createUser(userExtensionData, decodedToken.tenant_code)
+			: await this.#updateUser(userExtensionData, decodedToken)
 		if (createOrUpdateResult.statusCode != httpStatusCode.ok) return createOrUpdateResult
 		else
 			return responses.successResponse({
@@ -195,12 +219,17 @@ module.exports = class UserHelper {
 			name: userDetails?.name,
 			organization: {
 				id: orgExtension.organization_id.toString(),
+				code: orgExtension.organization_code.toString(),
 			},
+		}
+		let roles = userDetails?.user_roles
+		if (userDetails.organization) {
+			roles = userDetails.organization.roles
 		}
 
 		// List of optional fields to check
 		const optionalFields = {
-			roles: userDetails?.user_roles,
+			roles: roles,
 			email: userDetails?.email,
 			phone: userDetails?.phone,
 			skipValidation: true,
@@ -220,45 +249,85 @@ module.exports = class UserHelper {
 		return data
 	}
 
-	static async #createOrUpdateOrg(orgData) {
-		let orgExtension = await organisationExtensionQueries.getById(orgData.id)
-		if (orgExtension) return orgExtension
+	static async #createOrUpdateOrg(orgData, tenantCode) {
+		// Try to get from cache first
+		let orgExtension = await cacheHelper.organizations.get(tenantCode, orgData.code, orgData.id)
+
+		if (orgExtension) {
+			return orgExtension
+		}
+
+		// Use organization_id as organization_code for lookup since they're the same in user service data
+		orgExtension = await organisationExtensionQueries.getById(orgData.code, tenantCode)
+		if (orgExtension) {
+			// Cache the found organization
+			try {
+				await cacheHelper.organizations.set(tenantCode, orgData.code, orgData.id, orgExtension)
+			} catch (cacheError) {
+				console.error(`❌ Failed to cache organization ${orgData.id}:`, cacheError)
+			}
+			return orgExtension
+		}
 
 		const orgExtensionData = {
 			...common.getDefaultOrgPolicies(),
 			organization_id: orgData.id,
+			organization_code: orgData.code,
 			created_by: 1,
 			updated_by: 1,
+			tenant_code: tenantCode,
 		}
-		orgExtension = await organisationExtensionQueries.upsert(orgExtensionData)
-		return orgExtension.toJSON()
+		orgExtension = await organisationExtensionQueries.upsert(orgExtensionData, tenantCode)
+		const orgResult = orgExtension.toJSON()
+
+		// Clear organization cache after write operation to ensure consistency
+		try {
+			await cacheHelper.organizations.delete(tenantCode, orgData.code, orgData.id)
+		} catch (cacheError) {
+			console.error(`❌ Failed to clear organization cache ${orgData.id}:`, cacheError)
+		}
+
+		return orgResult
 	}
 
-	static async #createUser(userExtensionData) {
+	static async #createUser(userExtensionData, tenantCode) {
 		const isAMentor = userExtensionData.roles.some((role) => role.title == common.MENTOR_ROLE)
 		const orgId = userExtensionData.organization.id
+		const orgCode = userExtensionData.organization.code
 		const user = isAMentor
-			? await mentorsService.createMentorExtension(userExtensionData, userExtensionData.id, orgId)
-			: await menteesService.createMenteeExtension(userExtensionData, userExtensionData.id, orgId)
+			? await mentorsService.createMentorExtension(
+					userExtensionData,
+					userExtensionData.id,
+					orgCode,
+					tenantCode,
+					orgId
+			  )
+			: await menteesService.createMenteeExtension(
+					userExtensionData,
+					userExtensionData.id,
+					orgCode,
+					tenantCode,
+					orgId
+			  )
+
 		return user
 	}
 
 	static #checkOrgChange = (existingOrgId, newOrgId) => existingOrgId !== newOrgId
 
-	static async #updateUser(userExtensionData, targetHasMentorRole) {
+	static async #updateUser(userExtensionData, decodedToken) {
 		const isAMentee = userExtensionData.roles.some((role) => role.title === common.MENTEE_ROLE)
 		const isAMentor = userExtensionData.roles.some((role) => role.title === common.MENTOR_ROLE)
 		const roleChangePayload = {
 			user_id: userExtensionData.id,
 			organization_id: userExtensionData.organization.id,
+			organization_code: userExtensionData.organization.code,
 		}
 
 		let isRoleChanged = false
 
-		const menteeExtension = await menteeQueries.getMenteeExtension(userExtensionData.id, [
-			'organization_id',
-			'is_mentor',
-		])
+		// Skip cache during user updates - role changes require fresh data from database
+		let menteeExtension = await menteeQueries.findOne({ user_id: userExtensionData.id }, decodedToken.tenant_code)
 
 		if (!menteeExtension) throw new Error('User Not Found')
 
@@ -282,7 +351,21 @@ module.exports = class UserHelper {
 		if (isRoleChanged) {
 			//If role is changed, the role change, org policy changes for that user
 			//and additional data update of the user is done by orgAdmin's roleChange workflow
-			const roleChangeResult = await orgAdminService.roleChange(roleChangePayload, userExtensionData)
+			const roleChangeResult = await orgAdminService.roleChange(roleChangePayload, userExtensionData, tenantCode)
+
+			// Invalidate cache after role change - separate try-catch for each cache
+			try {
+				await cacheHelper.mentee.delete(tenantCode, userExtensionData.organization.code, userExtensionData.id)
+			} catch (cacheError) {
+				console.error(`❌ Failed to invalidate mentee cache after role change:`, cacheError)
+			}
+
+			try {
+				await cacheHelper.mentor.delete(tenantCode, userExtensionData.organization.code, userExtensionData.id)
+			} catch (cacheError) {
+				console.error(`❌ Failed to invalidate mentor cache after role change:`, cacheError)
+			}
+
 			return roleChangeResult
 		} else {
 			if (userExtensionData.email) delete userExtensionData.email
@@ -292,34 +375,61 @@ module.exports = class UserHelper {
 				? await menteesService.updateMenteeExtension(
 						userExtensionData,
 						userExtensionData.id,
-						userExtensionData.organization.id
+						userExtensionData.organization.code,
+						decodedToken.tenant_code
 				  )
 				: await mentorsService.updateMentorExtension(
 						userExtensionData,
 						userExtensionData.id,
-						userExtensionData.organization.id
+						userExtensionData.organization.code,
+						decodedToken.tenant_code
 				  )
+
+			// Invalidate cache after user update
+			try {
+				if (isAMentee) {
+					await cacheHelper.mentee.delete(
+						tenantCode,
+						userExtensionData.organization.code,
+						userExtensionData.id
+					)
+				} else {
+					await cacheHelper.mentor.delete(
+						tenantCode,
+						userExtensionData.organization.code,
+						userExtensionData.id
+					)
+				}
+			} catch (cacheError) {
+				console.error(`❌ Failed to invalidate user cache after update:`, cacheError)
+			}
+
 			return user
 		}
 	}
 
 	/**
 	 * Checks the existence of a user based on their mentee extension.
+	 * Uses caching to improve performance for frequent user existence checks.
 	 *
 	 * @param {string} userId - The ID of the user to check.
+	 * @param {string} tenantCode - The tenant code for multi-tenant isolation.
 	 * @returns {Promise<boolean>} - Returns `true` if the user does not exist, `false` otherwise.
 	 * @throws {Error} - Throws an error if the query fails.
 	 */
-	static async #checkUserExistence(userId) {
+	static async #checkUserExistence(userId, tenantCode) {
 		try {
-			const menteeExtension = await menteeQueries.getMenteeExtension(userId, ['organization_id'])
+			// Check mentee extension for user existence
+			const menteeExtension = await menteeQueries.getMenteeExtension(
+				userId,
+				['organization_id'],
+				false,
+				tenantCode
+			)
 
-			// Check if menteeExtension exists
-			const userExists = menteeExtension !== null
-
+			userExists = menteeExtension !== null
 			return !userExists // Return true if user does not exist
 		} catch (error) {
-			console.error('HERE: ', error)
 			throw error
 		}
 	}
@@ -346,7 +456,7 @@ module.exports = class UserHelper {
 		if (!userDetails.data.result) {
 			return 'FAILED_TO_GET_REQUIRED_USER_DETAILS'
 		} else {
-			const requiredFields = ['id', 'user_roles', 'name', 'organization_id']
+			const requiredFields = ['id', 'user_roles', 'email', 'name', 'organization_code', 'organization_id']
 			for (const field of requiredFields) {
 				if (!userDetails.data.result[field] || userDetails.data.result[field] == null) {
 					return 'FAILED_TO_GET_REQUIRED_USER_DETAILS'
@@ -364,9 +474,9 @@ module.exports = class UserHelper {
 	 * @returns {JSON} 							- request count.
 	 */
 
-	static async requestCount(userId) {
+	static async requestCount(userId, tenantCode) {
 		try {
-			const response = await userServiceHelper.findRequestCounts(userId)
+			const response = await userServiceHelper.findRequestCounts(userId, tenantCode)
 
 			return responses.successResponse({
 				statusCode: httpStatusCode.ok,
@@ -374,7 +484,6 @@ module.exports = class UserHelper {
 				result: response,
 			})
 		} catch (error) {
-			console.log(error)
 			throw error
 		}
 	}

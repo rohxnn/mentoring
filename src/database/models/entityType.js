@@ -14,6 +14,14 @@ module.exports = (sequelize, DataTypes) => {
 			status: { type: DataTypes.STRING, allowNull: false, defaultValue: 'ACTIVE' },
 			created_by: { type: DataTypes.STRING, allowNull: true },
 			updated_by: { type: DataTypes.STRING, allowNull: true },
+			organization_code: {
+				type: DataTypes.STRING,
+				allowNull: false,
+			},
+			tenant_code: {
+				type: DataTypes.STRING,
+				allowNull: false,
+			},
 			allow_filtering: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
 			data_type: { type: DataTypes.STRING, allowNull: false, defaultValue: 'STRING' },
 			organization_id: { type: DataTypes.STRING, allowNull: false, defaultValue: 0, primaryKey: true },
@@ -28,15 +36,15 @@ module.exports = (sequelize, DataTypes) => {
 		},
 		{ sequelize, modelName: 'EntityType', tableName: 'entity_types', freezeTableName: true, paranoid: true }
 	)
-	/* 	EntityType.associate = (models) => {
+	EntityType.associate = (models) => {
 		EntityType.hasMany(models.Entity, {
 			foreignKey: 'entity_type_id',
 			as: 'entities',
 			scope: {
-				deleted_at: null, // Only associate with active EntityType records
+				deleted_at: null, // Only associate with active Entity records
 			},
 		})
-	} */
+	}
 
 	EntityType.addHook('beforeDestroy', async (instance, options) => {
 		try {

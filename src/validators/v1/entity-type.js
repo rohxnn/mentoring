@@ -93,7 +93,7 @@ module.exports = {
 
 		req.checkBody('value')
 			.optional()
-			.matches(/^[A-Za-z]+$/)
+			.matches(/^[A-Za-z_]+$/)
 			.withMessage('value is invalid, must not contain spaces')
 
 		req.checkBody('label')

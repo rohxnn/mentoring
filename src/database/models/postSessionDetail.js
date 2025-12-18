@@ -1,4 +1,3 @@
-'use strict'
 const { Model } = require('sequelize')
 module.exports = (sequelize, DataTypes) => {
 	const PostSessionDetail = sequelize.define(
@@ -11,6 +10,11 @@ module.exports = (sequelize, DataTypes) => {
 			},
 			session_id: {
 				type: DataTypes.INTEGER,
+				allowNull: false,
+				primaryKey: true,
+			},
+			tenant_code: {
+				type: DataTypes.STRING,
 				allowNull: false,
 				primaryKey: true,
 			},
@@ -32,6 +36,16 @@ module.exports = (sequelize, DataTypes) => {
 			paranoid: true,
 		}
 	)
+
+	PostSessionDetail.associate = (models) => {
+		PostSessionDetail.belongsTo(models.Session, {
+			foreignKey: 'session_id',
+			as: 'session',
+			scope: {
+				deleted_at: null,
+			},
+		})
+	}
 
 	return PostSessionDetail
 }

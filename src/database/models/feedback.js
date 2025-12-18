@@ -16,8 +16,23 @@ module.exports = (sequelize, DataTypes) => {
 				type: DataTypes.JSON,
 			},
 			user_id: { type: DataTypes.STRING, allowNull: false, primaryKey: true },
+			tenant_code: {
+				type: DataTypes.STRING,
+				allowNull: false,
+			},
 		},
 		{ sequelize, modelName: 'Feedback', tableName: 'feedbacks', freezeTableName: true, paranoid: true }
 	)
+
+	Feedback.associate = (models) => {
+		Feedback.belongsTo(models.Session, {
+			foreignKey: 'session_id',
+			as: 'session',
+			scope: {
+				deleted_at: null,
+			},
+		})
+	}
+
 	return Feedback
 }

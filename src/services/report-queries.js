@@ -3,10 +3,12 @@ const responses = require('@helpers/responses')
 const ReportQueries = require('@database/queries/reportQueries')
 
 module.exports = class ReportsHelper {
-	static async createQuery(data) {
+	static async createQuery(data, organizationCode, organizationId, tenantCode) {
 		try {
 			// Attempt to create a new report directly
-			const mappingCreation = await ReportQueries.createReportQuery(data)
+			data.organization_id = organizationId
+			data.organization_code = organizationCode
+			const mappingCreation = await ReportQueries.createReportQuery(data, tenantCode)
 			return responses.successResponse({
 				statusCode: httpStatusCode.created,
 				message: 'REPORT_QUERY_CREATED_SUCCESSFULLY',
@@ -29,9 +31,9 @@ module.exports = class ReportsHelper {
 		}
 	}
 
-	static async getQuery(code) {
+	static async getQuery(code, organizationCode, tenantCode) {
 		try {
-			const readQuery = await ReportQueries.findReportQueryByCode(code)
+			const readQuery = await ReportQueries.findReportQueryByCode(code, tenantCode, organizationCode)
 			if (!readQuery) {
 				return responses.failureResponse({
 					message: 'REPORT_QUERY_NOT_FOUND',
@@ -49,10 +51,10 @@ module.exports = class ReportsHelper {
 		}
 	}
 
-	static async updateQuery(code, updateData) {
+	static async updateQuery(code, updateData, tenantCode) {
 		try {
 			const filter = { report_code: code }
-			const updateMapping = await ReportQueries.updateReportQueries(filter, updateData)
+			const updateMapping = await ReportQueries.updateReportQueries(filter, updateData, tenantCode)
 			if (!updateMapping) {
 				return responses.failureResponse({
 					message: 'REPORT_QUERY_UPDATE_FAILED',
@@ -70,9 +72,9 @@ module.exports = class ReportsHelper {
 		}
 	}
 
-	static async deleteQuery(id) {
+	static async deleteQuery(id, tenantCode) {
 		try {
-			const deletedRows = await ReportQueries.deleteReportQueryById(id)
+			const deletedRows = await ReportQueries.deleteReportQueryById(id, tenantCode)
 			if (deletedRows === 0) {
 				return responses.failureResponse({
 					message: 'REPORT_QUERY_DELETION_FAILED',

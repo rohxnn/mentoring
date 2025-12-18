@@ -1,6 +1,7 @@
 'use strict'
 const entityTypeQueries = require('@database/queries/entityType')
-const { getDefaultOrgId } = require('@helpers/getDefaultOrgId')
+const entityTypeCache = require('@helpers/entityTypeCache')
+const { getDefaults } = require('@helpers/getDefaultOrgId')
 const entityQueries = require('@database/queries/entity')
 const { Op } = require('sequelize')
 
@@ -42,7 +43,13 @@ const { Op } = require('sequelize')
  * // }
  */
 
-exports.buildSearchFilter = async function buildSearchFilter({ searchOn, searchConfig, search, modelName }) {
+exports.buildSearchFilter = async function buildSearchFilter({
+	searchOn,
+	searchConfig,
+	search,
+	modelName,
+	tenantCode,
+}) {
 	try {
 		if (!search || search.trim() === '') {
 			return {
@@ -85,7 +92,7 @@ exports.buildSearchFilter = async function buildSearchFilter({ searchOn, searchC
 		})
 		let falseSearchOnEntity
 		if (hasEntityTypeField) {
-			const entityTypeQuery = await getEntityTypeFilter(modelName, searchConfig, search, searchOn)
+			const entityTypeQuery = await getEntityTypeFilter(modelName, searchConfig, search, searchOn, tenantCode)
 
 			if (entityTypeQuery == false) {
 				const entityFields = configFields.filter((field) => field.isAnEntityType).map((field) => field.name)
@@ -100,7 +107,12 @@ exports.buildSearchFilter = async function buildSearchFilter({ searchOn, searchC
 		if (falseSearchOnEntity) {
 			return false
 		}
-		const whereClause = whereClauses.length > 0 ? `AND (${whereClauses.join(' OR ')})` : ''
+
+		let whereClause = ''
+		if (whereClauses.length > 0) {
+			whereClause = `AND (${whereClauses.join(' OR ')})`
+		}
+
 		const positionQuery = positionQueries.join(',\n    ')
 
 		const sortQuery = `
@@ -185,11 +197,17 @@ function buildQuery(entityTypes, entities) {
  *
  * @returns {Promise<string>} A promise that resolves to a query string based on the provided model name, configuration, and search term.
  */
-async function getEntityTypeFilter(modelName, config, search, searchOn) {
-	const defaultOrgId = await getDefaultOrgId()
-	if (!defaultOrgId)
+async function getEntityTypeFilter(modelName, config, search, searchOn, tenantCode) {
+	const defaults = await getDefaults()
+	if (!defaults.orgCode)
 		return responses.failureResponse({
-			message: 'DEFAULT_ORG_ID_NOT_SET',
+			message: 'DEFAULT_ORG_CODE_NOT_SET',
+			statusCode: httpStatusCode.bad_request,
+			responseCode: 'CLIENT_ERROR',
+		})
+	if (!defaults.tenantCode)
+		return responses.failureResponse({
+			message: 'DEFAULT_TENANT_CODE_NOT_SET',
 			statusCode: httpStatusCode.bad_request,
 			responseCode: 'CLIENT_ERROR',
 		})
@@ -201,13 +219,18 @@ async function getEntityTypeFilter(modelName, config, search, searchOn) {
 		entityTypes = config.fields.filter((field) => field.isAnEntityType === true).map((field) => field.name)
 	}
 
-	entityTypes = await entityTypeQueries.findUserEntityTypesAndEntities({
-		status: 'ACTIVE',
-		organization_id: defaultOrgId,
-		model_names: { [Op.contains]: [modelName] },
-		allow_filtering: true,
-		value: entityTypes,
-	})
+	entityTypes = await entityTypeCache.getEntityTypesAndEntitiesWithCache(
+		{
+			status: 'ACTIVE',
+			organization_code: defaults.orgCode,
+			model_names: { [Op.contains]: [modelName] },
+			allow_filtering: true,
+			value: entityTypes,
+		},
+		tenantCode,
+		defaults.orgCode,
+		modelName
+	)
 
 	const entityTypeIds = entityTypes.map((entityType) => entityType.id)
 
@@ -217,7 +240,7 @@ async function getEntityTypeFilter(modelName, config, search, searchOn) {
 		entity_type_id: entityTypeIds,
 	}
 
-	const entities = await entityQueries.findAllEntities(filter)
+	const entities = await entityQueries.findAllEntities(filter, { [Op.in]: [tenantCode, defaults.tenantCode] })
 
 	if (entities.length == 0) {
 		return false

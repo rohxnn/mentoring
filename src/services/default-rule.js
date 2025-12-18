@@ -1,10 +1,11 @@
 const common = require('@constants/common')
 const defaultRuleQueries = require('@database/queries/defaultRule')
+const entityTypeCache = require('@helpers/entityTypeCache')
 const entityTypeQueries = require('@database/queries/entityType')
 const mentorExtensionQueries = require('@database/queries/mentorExtension')
 const menteeExtensionQueries = require('@database/queries/userExtension')
 const sessionQueries = require('@database/queries/sessions')
-const { getDefaultOrgId } = require('@helpers/getDefaultOrgId')
+const { getDefaults } = require('@helpers/getDefaultOrgId')
 const responses = require('@helpers/responses')
 const httpStatusCode = require('@generics/http-status')
 const { Op } = require('sequelize')
@@ -17,7 +18,7 @@ module.exports = class DefaultRuleHelper {
 	/**
 	 * Validates the target and requester fields in the body data.
 	 *
-	 * @param {string} defaultOrgId - The ID of the default organization.
+	 * @param {string} defaultOrgCode - The ID of the default organization.
 	 * @param {Object} bodyData - The data to be validated.
 	 * @param {string} bodyData.type - The type of the rule.
 	 * @param {boolean} bodyData.is_target_from_sessions_mentor - Whether the target is from sessions mentor.
@@ -29,7 +30,7 @@ module.exports = class DefaultRuleHelper {
 	 * The object contains a boolean `isValid` indicating if the validation passed and an array `errors` with the validation errors if any.
 	 */
 
-	static async validateFields(defaultOrgId, bodyData) {
+	static async validateFields(orgCodes, bodyData, tenantCodes) {
 		const isSessionType =
 			bodyData.type === common.DEFAULT_RULES.SESSION_TYPE && !bodyData.is_target_from_sessions_mentor
 		const modelNamePromise = isSessionType ? sessionQueries.getModelName() : mentorExtensionQueries.getModelName()
@@ -39,17 +40,15 @@ module.exports = class DefaultRuleHelper {
 		const [modelName, mentorModelName] = await Promise.all([modelNamePromise, mentorModelNamePromise])
 
 		const validFieldsPromise = Promise.all([
-			entityTypeQueries.findAllEntityTypes(defaultOrgId, ['id', 'data_type'], {
-				status: 'ACTIVE',
-				organization_id: defaultOrgId,
+			entityTypeQueries.findAllEntityTypes(orgCodes, tenantCodes, ['id', 'data_type'], {
+				status: common.ACTIVE_STATUS,
 				value: bodyData.target_field,
 				model_names: { [Op.contains]: [modelName] },
 				required: true,
 				allow_filtering: true,
 			}),
-			entityTypeQueries.findAllEntityTypes(defaultOrgId, ['id', 'data_type'], {
-				status: 'ACTIVE',
-				organization_id: defaultOrgId,
+			entityTypeQueries.findAllEntityTypes(orgCodes, tenantCodes, ['id', 'data_type'], {
+				status: common.ACTIVE_STATUS,
 				value: bodyData.requester_field,
 				model_names: { [Op.contains]: [mentorModelName] },
 				required: true,
@@ -113,17 +112,32 @@ module.exports = class DefaultRuleHelper {
 	 * @param {String} orgId - Org Id of the user.
 	 * @returns {Promise<JSON>} - Created default rule response.
 	 */
-	static async create(bodyData, userId, orgId) {
+	static async create(bodyData, userId, orgId, orgCode, tenantCode) {
 		bodyData.created_by = userId
 		bodyData.updated_by = userId
 		bodyData.organization_id = orgId
+		bodyData.organization_code = orgCode
+		bodyData.tenant_code = tenantCode
 		bodyData.target_field = bodyData.target_field.toLowerCase()
 		bodyData.requester_field = bodyData.requester_field.toLowerCase()
 
 		try {
-			const defaultOrgId = await getDefaultOrgId()
-
-			const validation = await this.validateFields(defaultOrgId, bodyData)
+			const defaults = await getDefaults()
+			if (!defaults.orgCode)
+				return responses.failureResponse({
+					message: 'DEFAULT_ORG_CODE_NOT_SET',
+					statusCode: httpStatusCode.bad_request,
+					responseCode: 'CLIENT_ERROR',
+				})
+			if (!defaults.tenantCode)
+				return responses.failureResponse({
+					message: 'DEFAULT_TENANT_CODE_NOT_SET',
+					statusCode: httpStatusCode.bad_request,
+					responseCode: 'CLIENT_ERROR',
+				})
+			const validation = await this.validateFields({ [Op.in]: [orgCode, defaults.orgCode] }, bodyData, {
+				[Op.in]: [tenantCode, defaults.tenantCode],
+			})
 
 			if (!validation.isValid) {
 				return responses.failureResponse({
@@ -134,10 +148,10 @@ module.exports = class DefaultRuleHelper {
 				})
 			}
 
-			const defaultRule = await defaultRuleQueries.create(bodyData)
+			const defaultRule = await defaultRuleQueries.create(bodyData, tenantCode)
 
 			if (bodyData.type === common.DEFAULT_RULES.MENTOR_TYPE) {
-				let userAccounts = await menteeExtensionQueries.getAllUsersByOrgId([orgId])
+				let userAccounts = await menteeExtensionQueries.getAllUsersByOrgId([orgCode], tenantCode)
 
 				for (const element of userAccounts) {
 					let currentUserId = element.user_id
@@ -145,44 +159,64 @@ module.exports = class DefaultRuleHelper {
 					if (element.is_mentor) roles.push({ title: common.MENTOR_ROLE })
 
 					// Check connections
-					const connectionsData = await connections.getConnectedUsers(currentUserId, 'friend_id', 'user_id')
+					const connectionsData = await connections.getConnectedUsers(
+						currentUserId,
+						'friend_id',
+						'user_id',
+						tenantCode
+					)
 					for (const friendId of connectionsData) {
-						const requestedUserExtension = await menteeExtensionQueries.getMenteeExtension(friendId)
+						const requestedUserExtension = await menteeExtensionQueries.getMenteeExtension(
+							friendId,
+							[],
+							false,
+							tenantCode
+						)
 
 						if (requestedUserExtension) {
 							const validateDefaultRules = await validateDefaultRulesFilter({
 								ruleType: common.DEFAULT_RULES.MENTOR_TYPE,
 								requesterId: currentUserId,
 								roles: roles,
-								requesterOrganizationId: orgId,
+								requesterOrganizationCode: orgCode,
 								data: requestedUserExtension,
+								tenant_code: tenantCode,
 							})
 
 							if (!validateDefaultRules) {
-								await connections.deleteConnections(currentUserId, friendId)
-								await connections.deleteConnections(friendId, currentUserId)
+								await connections.deleteConnections(currentUserId, friendId, tenantCode)
+								await connections.deleteConnections(friendId, currentUserId, tenantCode)
 							}
 						}
 					}
 
 					// Check connection requests
-					const connectionsRequests = await connections.getConnectionRequestsForUser(currentUserId)
+					const connectionsRequests = await connections.getConnectionRequestsForUser(
+						currentUserId,
+						tenantCode
+					)
 					if (connectionsRequests.count > 0) {
 						for (const request of connectionsRequests.rows) {
 							const friendId = request.friend_id
-							const requestedUserExtension = await menteeExtensionQueries.getMenteeExtension(friendId)
+							const requestedUserExtension = await menteeExtensionQueries.getMenteeExtension(
+								friendId,
+								[],
+								false,
+								tenantCode
+							)
 
 							if (requestedUserExtension) {
 								const validateDefaultRules = await validateDefaultRulesFilter({
 									ruleType: common.DEFAULT_RULES.MENTOR_TYPE,
 									requesterId: currentUserId,
 									roles: roles,
-									requesterOrganizationId: orgId,
+									requesterOrganizationCode: orgCode,
 									data: requestedUserExtension,
+									tenant_code: tenantCode,
 								})
 
 								if (!validateDefaultRules) {
-									await connections.deleteConnectionsRequests(currentUserId, friendId)
+									await connections.deleteConnectionsRequests(currentUserId, friendId, tenantCode)
 								}
 							}
 						}
@@ -217,16 +251,31 @@ module.exports = class DefaultRuleHelper {
 	 * @param {String} orgId - Org Id of the user.
 	 * @returns {Promise<JSON>} - Updated default rule response.
 	 */
-	static async update(bodyData, ruleId, userId, orgId) {
+	static async update(bodyData, ruleId, userId, orgId, orgCode, tenantCode) {
 		bodyData.updated_by = userId
 		bodyData.organization_id = orgId
+		bodyData.organization_code = orgCode
+		bodyData.tenant_code = tenantCode
 		bodyData.target_field = bodyData.target_field.toLowerCase()
 		bodyData.requester_field = bodyData.requester_field.toLowerCase()
 
 		try {
-			const defaultOrgId = await getDefaultOrgId()
-
-			const validation = await this.validateFields(defaultOrgId, bodyData)
+			const defaults = await getDefaults()
+			if (!defaults.orgCode)
+				return responses.failureResponse({
+					message: 'DEFAULT_ORG_CODE_NOT_SET',
+					statusCode: httpStatusCode.bad_request,
+					responseCode: 'CLIENT_ERROR',
+				})
+			if (!defaults.tenantCode)
+				return responses.failureResponse({
+					message: 'DEFAULT_TENANT_CODE_NOT_SET',
+					statusCode: httpStatusCode.bad_request,
+					responseCode: 'CLIENT_ERROR',
+				})
+			const validation = await this.validateFields({ [Op.in]: [orgCode, defaults.orgCode] }, bodyData, {
+				[Op.in]: [tenantCode, defaults.tenantCode],
+			})
 
 			if (!validation.isValid) {
 				return responses.failureResponse({
@@ -238,8 +287,9 @@ module.exports = class DefaultRuleHelper {
 			}
 
 			const [updateCount, updatedDefaultRule] = await defaultRuleQueries.updateOne(
-				{ id: ruleId, organization_id: orgId },
+				{ id: ruleId, organization_code: orgCode, tenant_code: tenantCode },
 				bodyData,
+				tenantCode,
 				{
 					returning: true,
 					raw: true,
@@ -275,12 +325,28 @@ module.exports = class DefaultRuleHelper {
 	 * Read all default rules.
 	 * @method
 	 * @name readAll
-	 * @param {String} orgId - Org Id of the user.
+	 * @param {String} orgCode - Org Id of the user.
 	 * @returns {Promise<JSON>} - Found default rules response.
 	 */
-	static async readAll(orgId) {
+	static async readAll(orgCode, tenantCode) {
 		try {
-			const defaultRules = await defaultRuleQueries.findAndCountAll({ organization_id: orgId })
+			const defaults = await getDefaults()
+			if (!defaults.orgCode)
+				return responses.failureResponse({
+					message: 'DEFAULT_ORG_CODE_NOT_SET',
+					statusCode: httpStatusCode.bad_request,
+					responseCode: 'CLIENT_ERROR',
+				})
+			if (!defaults.tenantCode)
+				return responses.failureResponse({
+					message: 'DEFAULT_TENANT_CODE_NOT_SET',
+					statusCode: httpStatusCode.bad_request,
+					responseCode: 'CLIENT_ERROR',
+				})
+			const defaultRules = await defaultRuleQueries.findAndCountAll({
+				organization_code: { [Op.in]: [orgCode, defaults.orgCode] },
+				tenant_code: { [Op.in]: [tenantCode, defaults.tenantCode] },
+			})
 
 			return responses.successResponse({
 				statusCode: httpStatusCode.ok,
@@ -300,12 +366,29 @@ module.exports = class DefaultRuleHelper {
 	 * @method
 	 * @name readOne
 	 * @param {String} ruleId - Default rule ID.
-	 * @param {String} orgId - Org Id of the user.
+	 * @param {String} orgCode - Org Id of the user.
 	 * @returns {Promise<JSON>} - Found default rule response.
 	 */
-	static async readOne(ruleId, orgId) {
+	static async readOne(ruleId, orgCode, tenantCode) {
 		try {
-			const defaultRule = await defaultRuleQueries.findOne({ id: ruleId, organization_id: orgId })
+			const defaults = await getDefaults()
+			if (!defaults.orgCode)
+				return responses.failureResponse({
+					message: 'DEFAULT_ORG_CODE_NOT_SET',
+					statusCode: httpStatusCode.bad_request,
+					responseCode: 'CLIENT_ERROR',
+				})
+			if (!defaults.tenantCode)
+				return responses.failureResponse({
+					message: 'DEFAULT_TENANT_CODE_NOT_SET',
+					statusCode: httpStatusCode.bad_request,
+					responseCode: 'CLIENT_ERROR',
+				})
+			const defaultRule = await defaultRuleQueries.findOne({
+				id: ruleId,
+				organization_code: { [Op.in]: [orgCode, defaults.orgCode] },
+				tenant_code: { [Op.in]: [tenantCode, defaults.tenantCode] },
+			})
 			if (!defaultRule) {
 				return responses.failureResponse({
 					message: 'DEFAULT_RULE_NOT_FOUND',
@@ -328,12 +411,15 @@ module.exports = class DefaultRuleHelper {
 	 * @method
 	 * @name delete
 	 * @param {String} ruleId - Default rule ID.
-	 * @param {String} orgId - Org Id of the user.
+	 * @param {String} orgCode - Org Id of the user.
 	 * @returns {Promise<JSON>} - Default rule deleted response.
 	 */
-	static async delete(ruleId, orgId) {
+	static async delete(ruleId, orgCode, tenantCode) {
 		try {
-			const deleteCount = await defaultRuleQueries.deleteOne({ id: ruleId, organization_id: orgId })
+			const deleteCount = await defaultRuleQueries.deleteOne(
+				{ id: ruleId, organization_code: orgCode, tenant_code: tenantCode },
+				tenantCode
+			)
 			if (deleteCount === 0) {
 				return responses.failureResponse({
 					message: 'DEFAULT_RULE_NOT_FOUND',

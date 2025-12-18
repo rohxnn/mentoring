@@ -42,6 +42,10 @@ module.exports = (sequelize, DataTypes) => {
 				allowNull: true,
 				defaultValue: 'ENROLLED',
 			},
+			tenant_code: {
+				type: DataTypes.STRING,
+				allowNull: false,
+			},
 		},
 		{
 			sequelize,
@@ -51,6 +55,16 @@ module.exports = (sequelize, DataTypes) => {
 			paranoid: true,
 		}
 	)
+
+	SessionAttendee.associate = (models) => {
+		SessionAttendee.belongsTo(models.Session, {
+			foreignKey: 'session_id',
+			as: 'session',
+			scope: {
+				deleted_at: null,
+			},
+		})
+	}
 
 	return SessionAttendee
 }

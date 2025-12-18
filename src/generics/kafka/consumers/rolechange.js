@@ -3,7 +3,7 @@ const orgService = require('@services/org-admin')
 var messageReceived = function (message) {
 	return new Promise(async function (resolve, reject) {
 		try {
-			const { oldValues, newValues, entityId } = message
+			const { oldValues, newValues, entityId, tenant_code } = message
 			message.userId = entityId.toString()
 
 			// Trigger on any role difference (add/remove/change)
@@ -22,12 +22,14 @@ var messageReceived = function (message) {
 					user_id: entityId.toString(),
 					current_roles: oldRoles,
 					new_roles: newRoles,
+					tenant_code: tenant_code,
 				}
 				const updateData = {
 					updated_by: entityId,
 					updated_at: new Date(),
+					tenant_code: tenant_code,
 				}
-				await orgService.roleChange(bodyData, updateData)
+				await orgService.roleChange(bodyData, updateData, tenant_code)
 				return resolve()
 			}
 		} catch (error) {

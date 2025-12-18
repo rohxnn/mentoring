@@ -43,6 +43,14 @@ module.exports = (sequelize, DataTypes) => {
 			deleted_at: {
 				type: DataTypes.DATE,
 			},
+			organization_code: {
+				type: DataTypes.STRING,
+				allowNull: false,
+			},
+			tenant_code: {
+				type: DataTypes.STRING,
+				allowNull: false,
+			},
 		},
 		{
 			modelName: 'Report',

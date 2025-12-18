@@ -28,11 +28,12 @@ module.exports = class Mentors {
 				req.pageNo,
 				req.pageSize,
 				req.searchText,
-				req.params.menteeId ? req.params.menteeId : req?.decodedToken?.id,
+				req.params.menteeId ? req.params.menteeId : req.decodedToken.id,
 				req.query,
 				isAMentor(req.decodedToken.roles),
 				req.decodedToken.roles,
-				req.decodedToken.organization_id
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
 			)
 		} catch (error) {
 			return error
@@ -53,7 +54,7 @@ module.exports = class Mentors {
 		try {
 			return await mentorsService.read(
 				req.params.id,
-				req.decodedToken.organization_id,
+				req.decodedToken.organization_code,
 				req.decodedToken.id,
 				isAMentor(req.decodedToken.roles),
 				req.decodedToken.roles,
@@ -81,7 +82,8 @@ module.exports = class Mentors {
 			const reports = await mentorsService.reports(
 				req.decodedToken.id,
 				req.query.filterType,
-				req.decodedToken.roles
+				req.decodedToken.roles,
+				req.decodedToken.tenant_code
 			)
 			return reports
 		} catch (error) {
@@ -100,7 +102,12 @@ module.exports = class Mentors {
 
 	async share(req) {
 		try {
-			const shareLink = await mentorsService.share(req.params.id)
+			const shareLink = await mentorsService.share(
+				req.params.id,
+				req.decodedToken.id,
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
+			)
 			return shareLink
 		} catch (error) {
 			return error
@@ -130,7 +137,8 @@ module.exports = class Mentors {
 				req.decodedToken.id,
 				isAMentor(req.decodedToken.roles),
 				req.decodedToken.roles,
-				req.decodedToken.organization_id
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
 			)
 		} catch (error) {
 			return error
@@ -154,7 +162,9 @@ module.exports = class Mentors {
 				req.pageSize,
 				req.searchText,
 				req.query.status,
-				req.decodedToken.roles
+				req.decodedToken.roles,
+				req.decodedToken.organization_code,
+				req.decodedToken.tenant_code
 			)
 			return sessionDetails
 		} catch (error) {

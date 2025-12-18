@@ -24,6 +24,7 @@ module.exports = class availabilityHelper {
 			bodyData['created_by'] = decodedToken.id
 			bodyData['updated_by'] = decodedToken.id
 			bodyData['user_id'] = decodedToken.id
+			bodyData['tenant_code'] = decodedToken.tenant_code
 
 			const minimumDurationForAvailability = parseInt(process.env.MINIMUM_DURATION_FOR_AVAILABILITY, 10)
 			if (minimumDurationForAvailability !== 0) {
@@ -38,14 +39,13 @@ module.exports = class availabilityHelper {
 				}
 			}
 
-			let availability = await availabilityQueries.createAvailability(bodyData)
+			let availability = await availabilityQueries.createAvailability(bodyData, decodedToken.tenant_code)
 			return responses.successResponse({
 				statusCode: httpStatusCode.created,
 				message: 'AVAILABILITY_CREATED_SUCCESSFULLY',
 				result: availability,
 			})
 		} catch (error) {
-			console.log(error)
 			throw error
 		}
 	}
@@ -60,8 +60,12 @@ module.exports = class availabilityHelper {
 	 */
 	static async update(id, bodyData, decodedToken) {
 		try {
-			const filter = { id, created_by: decodedToken.id }
-			const [rowsAffected] = await availabilityQueries.updateAvailability(filter, bodyData)
+			const filter = { id, created_by: decodedToken.id, tenant_code: decodedToken.tenant_code }
+			const [rowsAffected] = await availabilityQueries.updateAvailability(
+				filter,
+				bodyData,
+				decodedToken.tenant_code
+			)
 
 			if (rowsAffected === 0) {
 				return responses.failureResponse({
@@ -75,7 +79,6 @@ module.exports = class availabilityHelper {
 				message: 'AVAILABILITY_UPDATED_SUCCESSFULLY',
 			})
 		} catch (error) {
-			console.log(error)
 			throw error
 		}
 	}
@@ -89,9 +92,8 @@ module.exports = class availabilityHelper {
 	 */
 	static async delete(id, decodedToken) {
 		try {
-			const filter = { id, created_by: decodedToken.id }
-			const rowsAffected = await availabilityQueries.deleteAvailability(filter)
-			console.log(rowsAffected)
+			const filter = { id, created_by: decodedToken.id, tenant_code: decodedToken.tenant_code }
+			const rowsAffected = await availabilityQueries.deleteAvailability(filter, decodedToken.tenant_code)
 			if (rowsAffected === 0) {
 				return responses.failureResponse({
 					message: 'AVAILABILITY_NOT_FOUND',
@@ -104,7 +106,6 @@ module.exports = class availabilityHelper {
 				message: 'AVAILABILITY_DELETED_SUCCESSFULLY',
 			})
 		} catch (error) {
-			console.log(error)
 			throw error
 		}
 	}
@@ -236,7 +237,7 @@ module.exports = class availabilityHelper {
 	 * @param {number} userId - The user ID.
 	 * @returns {Promise<Object>} - The response object.
 	 */
-	static async read(query, userId) {
+	static async read(query, userId, tenantCode) {
 		try {
 			const filter = {
 				[Op.or]: [
@@ -253,6 +254,7 @@ module.exports = class availabilityHelper {
 					},
 				],
 				user_id: userId,
+				tenant_code: tenantCode,
 			}
 			let userAvailabilities = await availabilityQueries.findAvailability(filter)
 
@@ -291,7 +293,6 @@ module.exports = class availabilityHelper {
 			})
 
 			const end = performance.now()
-			console.log(`Elapsed time: ${end - start} milliseconds`)
 
 			let updatedAvailabilities = userAvailabilities
 
@@ -318,7 +319,6 @@ module.exports = class availabilityHelper {
 				result: mergedDataWithSessions,
 			})
 		} catch (error) {
-			console.log(error)
 			throw error
 		}
 	}
@@ -330,7 +330,7 @@ module.exports = class availabilityHelper {
 	 * @param {number} userId - The user ID.
 	 * @returns {Promise<Object>} - The response object.
 	 */
-	static async isAvailable(query, userId) {
+	static async isAvailable(query, userId, tenantCode) {
 		try {
 			const filter = {
 				[Op.or]: [
@@ -347,6 +347,7 @@ module.exports = class availabilityHelper {
 					},
 				],
 				user_id: userId,
+				tenant_code: tenantCode,
 			}
 			let userAvailabilities = await availabilityQueries.findAvailability(filter)
 			const sessions = await sessionQueries.findAll(
@@ -394,7 +395,6 @@ module.exports = class availabilityHelper {
 				},
 			})
 		} catch (error) {
-			console.log(error)
 			throw error
 		}
 	}
@@ -405,7 +405,7 @@ module.exports = class availabilityHelper {
 	 * @param {Object} query - The query parameters.
 	 * @returns {Promise<Object>} - The response object.
 	 */
-	static async users(query) {
+	static async users(query, userId, tenantCode) {
 		try {
 			const filter = {
 				[Op.or]: [
@@ -421,6 +421,7 @@ module.exports = class availabilityHelper {
 						},
 					},
 				],
+				tenant_code: tenantCode,
 			}
 			let userAvailabilities = await availabilityQueries.findAvailability(filter)
 			const sessions = await sessionQueries.findAll(
@@ -450,7 +451,6 @@ module.exports = class availabilityHelper {
 			})
 
 			const end = performance.now()
-			console.log(`Elapsed time: ${end - start} milliseconds`)
 
 			let updatedAvailabilities = userAvailabilities
 			if (sessions && process.env.MULTIPLE_BOOKING === 'false') {
@@ -465,6 +465,7 @@ module.exports = class availabilityHelper {
 				{
 					attributes: ['user_id', 'name', 'email'],
 				},
+				tenantCode,
 				true
 			)
 
@@ -474,7 +475,6 @@ module.exports = class availabilityHelper {
 				result: userDetails,
 			})
 		} catch (error) {
-			console.log(error)
 			throw error
 		}
 	}

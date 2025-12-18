@@ -8,9 +8,7 @@
 module.exports = {
 	roleChange: (req) => {
 		// Validate incoming request body
-		req.checkBody('user_id')
-			.notEmpty()
-			.withMessage('user_id field is empty')
+		req.checkBody('user_id').notEmpty().withMessage('user_id field is empty')
 		req.checkBody('current_roles')
 			.notEmpty()
 			.withMessage('current_roles field is empty')
@@ -21,6 +19,16 @@ module.exports = {
 			.withMessage('new_roles field is empty')
 			.isArray({ min: 1 })
 			.withMessage('new_roles must be an array')
+		req.checkBody('tenant_code')
+			.notEmpty()
+			.withMessage('tenant_code field is empty')
+			.isString()
+			.withMessage('tenant_code must be an string')
+		req.checkBody('organization_code')
+			.notEmpty()
+			.withMessage('organization_code field is empty')
+			.isString()
+			.withMessage('organization_code must be an string')
 	},
 	inheritEntityType: (req) => {
 		// Validate incoming request body
@@ -90,6 +98,16 @@ module.exports = {
 			.withMessage('user_ids field is empty')
 			.isArray()
 			.withMessage('user_ids must be an array')
+		req.checkBody('tenant_code')
+			.notEmpty()
+			.withMessage('tenant_code field is empty')
+			.isString()
+			.withMessage('tenant_code must be an string')
+		req.checkBody('organization_code')
+			.notEmpty()
+			.withMessage('organization_code field is empty')
+			.isString()
+			.withMessage('organization_code must be an string')
 	},
 	updateRelatedOrgs: (req) => {
 		req.checkBody('delta_organization_ids').notEmpty().withMessage('delta_organization_ids field is empty')
@@ -99,6 +117,11 @@ module.exports = {
 			.isInt()
 			.withMessage('organization_id must be an integer')
 		req.checkBody('action').notEmpty().withMessage('action field is empty')
+		req.checkBody('tenant_code')
+			.notEmpty()
+			.withMessage('tenant_code field is empty')
+			.isString()
+			.withMessage('tenant_code must be an string')
 	},
 	uploadSampleCSV: (req) => {
 		req.checkBody('file_path').notEmpty().withMessage('file_path field is empty')

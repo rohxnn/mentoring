@@ -12,7 +12,6 @@ const moment = require('moment')
 const path = require('path')
 const md5 = require('md5')
 const fs = require('fs')
-const { RedisCache, InternalCache } = require('elevate-node-cache')
 const startCase = require('lodash/startCase')
 const common = require('@constants/common')
 const crypto = require('crypto')
@@ -120,30 +119,11 @@ function md5Hash(value) {
 	return md5(value)
 }
 
-function internalSet(key, value) {
-	return InternalCache.setKey(key, value)
-}
-function internalGet(key) {
-	return InternalCache.getKey(key)
-}
-function internalDel(key) {
-	return InternalCache.delKey(key)
-}
-
-function redisSet(key, value, exp) {
-	return RedisCache.setKey(key, value, exp)
-}
-function redisGet(key) {
-	return RedisCache.getKey(key)
-}
-function redisDel(key) {
-	return RedisCache.deleteKey(key)
-}
 const capitalize = (str) => {
 	return startCase(str)
 }
 const isAMentor = (roles) => {
-	return roles.some((role) => role.title == common.MENTOR_ROLE)
+	return roles && Array.isArray(roles) ? roles.some((role) => role.title == common.MENTOR_ROLE) : false
 }
 function isNumeric(value) {
 	return /^\d+$/.test(value)
@@ -323,7 +303,7 @@ function restructureBody(requestBody, entityData, allowedKeys) {
 		if (Object.keys(requestBody.custom_entity_text).length === 0) requestBody.custom_entity_text = null
 		return requestBody
 	} catch (error) {
-		console.error(error)
+		console.log(err)
 	}
 }
 
@@ -348,6 +328,7 @@ function processDbResponse(responseBody, entityType) {
 		if (entityType.some((entity) => entity.value === key) && output[key] !== null) {
 			// Find the matching entity type for the current key
 			const matchingEntity = entityType.find((entity) => entity.value === key)
+
 			// Filter and map the matching entity values
 			const matchingValues = matchingEntity.entities
 				.filter((entity) => (Array.isArray(output[key]) ? output[key].includes(entity.value) : true))
@@ -355,12 +336,17 @@ function processDbResponse(responseBody, entityType) {
 					value: entity.value,
 					label: entity.label,
 				}))
+
 			// Check if there are matching values
-			if (matchingValues.length > 0)
-				output[key] = Array.isArray(output[key])
+			if (matchingValues.length > 0) {
+				const newValue = Array.isArray(output[key])
 					? matchingValues
 					: matchingValues.find((entity) => entity.value === output[key])
-			else if (Array.isArray(output[key])) output[key] = output[key].filter((item) => item.value && item.label)
+				output[key] = newValue
+			} else if (Array.isArray(output[key])) {
+				const filteredValue = output[key].filter((item) => item.value && item.label)
+				output[key] = filteredValue
+			}
 		}
 
 		if (output.meta && output.meta[key] && entityType.some((entity) => entity.value === output.meta[key].value)) {
@@ -484,13 +470,18 @@ const validateRoleAccess = (roles, requiredRoles) => {
 	}
 }
 
-const removeDefaultOrgEntityTypes = (entityTypes, orgId) => {
+const removeDefaultOrgEntityTypes = (entityTypes, orgCode) => {
 	const entityTypeMap = new Map()
 	entityTypes.forEach((entityType) => {
-		if (!entityTypeMap.has(entityType.value)) entityTypeMap.set(entityType.value, entityType)
-		else if (entityType.organization_id === orgId) entityTypeMap.set(entityType.value, entityType)
+		if (!entityTypeMap.has(entityType.value)) {
+			entityTypeMap.set(entityType.value, entityType)
+		} else if (entityType.organization_code === orgCode) {
+			entityTypeMap.set(entityType.value, entityType)
+		}
 	})
-	return Array.from(entityTypeMap.values())
+
+	const result = Array.from(entityTypeMap.values())
+	return result
 }
 const generateWhereClause = (tableName) => {
 	let whereClause = ''
@@ -522,6 +513,11 @@ const generateWhereClause = (tableName) => {
  */
 function validateAndBuildFilters(input, validationData) {
 	const entityTypes = {}
+
+	// Ensure validationData is an array
+	if (!Array.isArray(validationData)) {
+		throw new Error('Validation data must be an array')
+	}
 
 	// Build the entityTypes dictionary
 	validationData.forEach((entityType) => {
@@ -742,21 +738,21 @@ function convertEntitiesForFilter(entityTypes) {
 	return result
 }
 
-function filterEntitiesBasedOnParent(data, defaultOrgId, doNotRemoveDefaultOrg) {
+function filterEntitiesBasedOnParent(data, defaultOrgCode, doNotRemoveDefaultOrg) {
 	let result = {}
 
 	for (let key in data) {
 		let countWithParentId = 0
 		let countOfEachKey = data[key].length
 		data[key].forEach((obj) => {
-			if (obj.parent_id !== null && obj.organization_id != defaultOrgId) {
+			if (obj.parent_id !== null && obj.organization_code != defaultOrgCode) {
 				countWithParentId++
 			}
 		})
 
 		let outputArray = data[key]
 		if (countOfEachKey > 1 && countWithParentId == countOfEachKey - 1 && !doNotRemoveDefaultOrg) {
-			outputArray = data[key].filter((obj) => !(obj.organization_id === defaultOrgId && obj.parent_id === null))
+			outputArray = data[key].filter((obj) => !(obj.organization_code === defaultOrgId && obj.parent_id === null))
 		}
 
 		result[key] = outputArray
@@ -1000,7 +996,6 @@ function applyDefaultFilters(filters, columnConfigs) {
 
 function getDynamicFilterCondition(filters, columnMappings, baseQuery, columnConfig) {
 	if (!filters || typeof filters !== 'object') {
-		console.log('Filters is not an object or is empty')
 		return baseQuery // Return the base query unchanged
 	}
 
@@ -1008,7 +1003,6 @@ function getDynamicFilterCondition(filters, columnMappings, baseQuery, columnCon
 		.map(([column, value]) => {
 			let mappedColumn = columnMappings[column]
 			if (!mappedColumn) {
-				console.log(`No mapping found for column: ${column}`)
 				return null // Skip if no mapping is found for the column
 			}
 
@@ -1026,7 +1020,7 @@ function getDynamicFilterCondition(filters, columnMappings, baseQuery, columnCon
 					// If value is already in seconds, use it directly
 					return `total_mentoring_seconds ${filterType} ${value}`
 				}
-				console.error(`Invalid time format for filtering ${column}`)
+
 				return null
 			}
 
@@ -1111,7 +1105,6 @@ function isStrictValidDate(dateString) {
 
 function getDynamicSearchCondition(search, columnMappings, baseQuery) {
 	if (!search || typeof search !== 'object') {
-		console.log('Search is not an object or is empty')
 		return '' // Early exit if search is not valid
 	}
 
@@ -1119,7 +1112,6 @@ function getDynamicSearchCondition(search, columnMappings, baseQuery) {
 		.map(([column, value]) => {
 			const mappedColumn = columnMappings[column]
 			if (!mappedColumn) {
-				console.log(`No mapping found for column: ${column}`)
 				return null // Skip if no mapping is found for the column
 			}
 
@@ -1257,6 +1249,18 @@ function transformEntityTypes(input) {
 	return { entityTypes }
 }
 
+/**
+ * Generate tenant-specific materialized view name
+ * @function
+ * @name getTenantViewName
+ * @param {String} tenantCode - Tenant code
+ * @param {String} tableName - Table name
+ * @returns {String} returns tenant-specific view name.
+ */
+const getTenantViewName = (tenantCode, tableName) => {
+	return `${tenantCode}_m_${tableName}`
+}
+
 function sortData(data = [], path = 'meta.sequence') {
 	const getValue = (obj, path) => {
 		return path.split('.').reduce((acc, key) => acc?.[key], obj)
@@ -1292,12 +1296,6 @@ module.exports = {
 	getTimeZone,
 	utcFormat,
 	md5Hash,
-	internalSet,
-	internalDel,
-	internalGet,
-	redisSet,
-	redisGet,
-	redisDel,
 	extractEmailTemplate,
 	capitalize,
 	isAMentor,
@@ -1340,5 +1338,6 @@ module.exports = {
 	mapEntityTypeToData,
 	getDynamicEntityCondition,
 	transformEntityTypes,
+	getTenantViewName,
 	sortData,
 }

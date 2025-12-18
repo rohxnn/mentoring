@@ -27,7 +27,8 @@ module.exports = class Sessions {
 				req.decodedToken.id,
 				req.query,
 				req.query.timezone,
-				req.searchText
+				req.searchText,
+				req.decodedToken.tenant_code
 			)
 			return sessionDetails
 		} catch (error) {
@@ -57,7 +58,8 @@ module.exports = class Sessions {
 				req.query.timezone,
 				req.pageNo,
 				req.pageSize,
-				req.searchText
+				req.searchText,
+				req.decodedToken.tenant_code
 			)
 			return sessionDetails
 		} catch (error) {

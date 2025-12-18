@@ -6,6 +6,7 @@ const permissionsQueries = require('@database/queries/permissions')
 const { UniqueConstraintError, ForeignKeyConstraintError } = require('sequelize')
 const { Op } = require('sequelize')
 const responses = require('@helpers/responses')
+const cacheHelper = require('@generics/cacheHelper')
 
 module.exports = class modulesHelper {
 	/**
@@ -17,9 +18,12 @@ module.exports = class modulesHelper {
 	 * @returns {JSON} - modules created response.
 	 */
 
-	static async create(bodyData) {
+	static async create(bodyData, userId, organizationId, tenantCode) {
 		try {
-			const modules = await modulesQueries.createModules(bodyData)
+			// Add tenant context to bodyData
+			bodyData.tenant_code = tenantCode
+
+			const modules = await modulesQueries.createModules(bodyData, tenantCode)
 			return responses.successResponse({
 				statusCode: httpStatusCode.created,
 				message: 'MODULES_CREATED_SUCCESSFULLY',
@@ -51,18 +55,35 @@ module.exports = class modulesHelper {
 	 * @returns {JSON} - modules updated response.
 	 */
 
-	static async update(id, bodyData) {
+	static async update(id, bodyData, userId, organizationId, tenantCode) {
 		try {
-			const modules = await modulesQueries.findModulesById(id)
+			const modules = await modulesQueries.findModulesById(id, tenantCode)
 			if (!modules) {
-				throw new Error('MODULES_NOT_FOUND')
+				return responses.failureResponse({
+					message: 'MODULES_NOT_FOUND',
+					statusCode: httpStatusCode.not_found,
+					responseCode: 'CLIENT_ERROR',
+				})
 			}
 
-			const updatedModules = await modulesQueries.updateModules({ id }, bodyData)
-			const updatePermissions = permissionsQueries.updatePermissions(
-				{ module: modules.code },
+			const updatedModules = await modulesQueries.updateModules(
+				{ id, tenant_code: tenantCode },
+				bodyData,
+				tenantCode
+			)
+			const updatePermissions = await permissionsQueries.updatePermissions(
+				{ module: modules.code, tenant_code: tenantCode },
 				{ module: updatedModules.code }
 			)
+
+			// Cache invalidation: Clear permissions cache after permissions update
+			if (updatePermissions) {
+				try {
+					await cacheHelper.permissions.evictAll()
+				} catch (cacheError) {
+					console.error(`Cache deletion failed for permissions after module update:`, cacheError)
+				}
+			}
 
 			if (!updatedModules && !updatePermissions) {
 				return responses.failureResponse({
@@ -94,9 +115,9 @@ module.exports = class modulesHelper {
 	 * @returns {JSON} - modules deleted response.
 	 */
 
-	static async delete(id) {
+	static async delete(id, userId, organizationId, tenantCode) {
 		try {
-			const modules = await modulesQueries.findModulesById(id)
+			const modules = await modulesQueries.findModulesById(id, tenantCode)
 
 			if (!modules) {
 				return responses.failureResponse({
@@ -105,7 +126,7 @@ module.exports = class modulesHelper {
 					responseCode: 'CLIENT_ERROR',
 				})
 			} else {
-				const deletemodules = await modulesQueries.deleteModulesById(id)
+				const deletemodules = await modulesQueries.deleteModulesById(id, tenantCode)
 
 				if (!deletemodules) {
 					return responses.failureResponse({
@@ -133,19 +154,54 @@ module.exports = class modulesHelper {
 	 * @returns {JSON} - modules list response.
 	 */
 
-	static async list(page, limit, search) {
+	static async list(page, limit, search, userId, organizationId, tenantCode) {
 		try {
 			const offset = common.getPaginationOffset(page, limit)
 
-			const filter = {
-				code: { [Op.iLike]: `%${search}%` },
+			// Try to get modules from cache first (only cache without search)
+			const cacheKey = `page${page}_limit${limit}`
+			let modules = null
+
+			if (!search || search.trim() === '') {
+				modules = await cacheHelper.forms.get(
+					tenantCode,
+					organizationId || common.SYSTEM,
+					'modules_list',
+					cacheKey
+				)
+				if (modules) {
+				}
 			}
-			const options = {
-				offset,
-				limit,
+
+			if (!modules) {
+				const filter = {
+					tenant_code: tenantCode,
+				}
+				if (search && search.trim() !== '') {
+					filter.code = { [Op.iLike]: `%${search.trim()}%` }
+				}
+				const options = {
+					offset,
+					limit,
+				}
+				const attributes = ['id', 'code', 'status']
+				modules = await modulesQueries.findAllModules(filter, attributes, options, tenantCode)
+
+				// Cache the result if no search text
+				if ((!search || search.trim() === '') && modules) {
+					try {
+						await cacheHelper.forms.set(
+							tenantCode,
+							organizationId || common.SYSTEM,
+							'modules_list',
+							cacheKey,
+							modules
+						)
+					} catch (cacheError) {
+						console.error(`❌ Failed to cache modules list:`, cacheError)
+					}
+				}
 			}
-			const attributes = ['id', 'code', 'status']
-			const modules = await modulesQueries.findAllModules(filter, attributes, options)
 
 			if (modules.rows == 0 || modules.count == 0) {
 				return responses.failureResponse({

@@ -1,17 +1,18 @@
 const Availability = require('../models/index').Availability
 
 module.exports = class AvailabilityData {
-	static async createAvailability(data) {
+	static async createAvailability(data, tenantCode) {
 		try {
+			data.tenant_code = tenantCode
 			return await Availability.create(data, { returning: true })
 		} catch (error) {
-			console.log(error)
-			return error
+			throw error
 		}
 	}
 
-	static async findAvailability(filter, projection = {}) {
+	static async findAvailability(filter, tenantCode, projection = {}) {
 		try {
+			filter.tenant_code = tenantCode
 			return await Availability.findAll({
 				where: filter,
 				attributes: projection,
@@ -19,13 +20,13 @@ module.exports = class AvailabilityData {
 				order: [['start_time', 'ASC']],
 			})
 		} catch (error) {
-			console.log(error)
-			return error
+			throw error
 		}
 	}
 
-	static async updateAvailability(filter, update, options = {}) {
+	static async updateAvailability(filter, update, tenantCode, options = {}) {
 		try {
+			filter.tenant_code = tenantCode
 			return await Availability.update(update, {
 				where: filter,
 				...options,
@@ -35,13 +36,14 @@ module.exports = class AvailabilityData {
 		}
 	}
 
-	static async deleteAvailability(filter) {
+	static async deleteAvailability(filter, tenantCode) {
 		try {
+			filter.tenant_code = tenantCode
 			return await Availability.destroy({
 				where: filter,
 			})
 		} catch (error) {
-			return error
+			throw error
 		}
 	}
 }
