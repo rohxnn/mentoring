@@ -14629,6 +14629,7 @@ paths:
         `required`
 
         * This is a mandatory parameter and cannot be empty or null.
+
   /mentoring/v1/connections/initiate:
     post:
       summary: Initiate connection with a user
@@ -14636,6 +14637,27 @@ paths:
       operationId: ''
       tags: &ref_15
         - Connections
+
+  /mentoring/health:
+    get:
+      summary: >-
+        Performs a complete health scan including core and downstream
+        microservices.
+      description: >-
+        This API is used to verify the health status of the Mentoring Service
+        and its dependencies. 
+
+
+        * The API Endpoint for health check is /mentoring/health
+
+        * It is mandatory to provide values for parameters that are marked as
+        `required`
+
+        * This is a mandatory parameter and cannot be empty or null
+      operationId: ''
+      tags:
+        - healthCheck
+
       parameters: []
       responses:
         '200':
@@ -14643,6 +14665,160 @@ paths:
           content:
             application/json:
               schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  ver:
+                    type: string
+                  ts:
+                    type: string
+                  params:
+                    type: object
+                    properties:
+                      resmsgid:
+                        type: string
+                      msgid:
+                        type: string
+                      status:
+                        type: string
+                      err:
+                        type: 'null'
+                      errMsg:
+                        type: 'null'
+                  status:
+                    type: number
+                  result:
+                    type: object
+                    properties:
+                      version:
+                        type: string
+                      healthy:
+                        type: boolean
+                      checks:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            healthy:
+                              type: boolean
+                            err:
+                              type: string
+                            errMsg:
+                              type: string
+                          required:
+                            - name
+                            - healthy
+                            - err
+                            - errMsg
+              examples:
+                example1:
+                  value:
+                    id: mentoringService.health.api
+                    ver: '1.0'
+                    ts: '2025-07-18T05:37:52.918Z'
+                    params:
+                      resmsgid: 59614b60-6399-11f0-b49c-63dd43745a89
+                      msgid: 59614b61-6399-11f0-b49c-63dd43745a89
+                      status: successful
+                      err: null
+                      errMsg: null
+                    status: 200
+                    result:
+                      version: 1.0.0
+                      healthy: true
+                      checks:
+                        - name: Kafka
+                          healthy: true
+                          err: ''
+                          errMsg: ''
+                        - name: redis
+                          healthy: true
+                          err: ''
+                          errMsg: ''
+                        - name: UserService
+                          healthy: true
+                          err: ''
+                          errMsg: ''
+                        - name: SchedulerService
+                          healthy: true
+                          err: ''
+                          errMsg: ''
+        '400':
+          description: bad request
+          headers: {}
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  ver:
+                    type: string
+                  ts:
+                    type: string
+                  params:
+                    type: object
+                    properties:
+                      resmsgid:
+                        type: string
+                      msgid:
+                        type: string
+                      status:
+                        type: string
+                      err:
+                        type: string
+                      errMsg:
+                        type: string
+                  status:
+                    type: number
+                  result:
+                    type: object
+                    properties: {}
+              examples:
+                example1:
+                  value:
+                    id: mentoringService.Health.API
+                    ver: '1.0'
+                    ts: '2025-07-18T04:43:35.352Z'
+                    params:
+                      resmsgid: c3b82b80-6391-11f0-9617-d554ca31487a
+                      msgid: c3b82b81-6391-11f0-9617-d554ca31487a
+                      status: failed
+                      err: CONFIG_VALIDATION_ERROR
+                      errMsg: "Missing 'url' for enabled service: postgres"
+                    status: 400
+                    result: {}
+components:
+  schemas:
+    form:
+      createFormRequest:
+        type: object
+        required:
+          - type
+          - subType
+          - action
+          - data
+        properties:
+          type:
+            type: string
+            example: profile
+          subType:
+            type: string
+            example: profileForm
+          action:
+            type: string
+            example: profileFields
+          data:
+            type: object
+            properties:
+              templateName:
+                type: string
+                example: defaultTemplate
+              fields:
                 type: object
                 properties:
                   responseCode:
@@ -19698,6 +19874,7 @@ tags:
     externalDocs:
       description: ''
       url: ''
+
   - name: Connections
     description: ''
     externalDocs:

@@ -903,7 +903,6 @@ const generateDateRanges = (startEpoch, endEpoch, interval, timeZone = 'UTC') =>
 
 	return dateRanges
 }
-
 const mapEntityTypesToData = (data, entityTypes) => {
 	return data.map((item) => {
 		const newItem = { ...item }
