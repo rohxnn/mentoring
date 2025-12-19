@@ -2,16 +2,26 @@
 
 module.exports = {
 	async up(queryInterface, Sequelize) {
-		await queryInterface.sequelize.query(`
-      CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_user_ext_org_name_partial
-      ON m_user_extensions (organization_id, LOWER(name))
-      WHERE is_mentor = true;
-    `)
+		return queryInterface.sequelize.transaction(async (transaction) => {
+			await queryInterface.sequelize.query(
+				`
+        CREATE INDEX IF NOT EXISTS idx_user_ext_org_name_partial
+        ON m_user_extensions (organization_id, LOWER(name))
+        WHERE is_mentor = true;
+        `,
+				{ transaction }
+			)
+		})
 	},
 
 	async down(queryInterface, Sequelize) {
-		await queryInterface.sequelize.query(`
-      DROP INDEX CONCURRENTLY IF EXISTS idx_user_ext_org_name_partial;
-    `)
+		return queryInterface.sequelize.transaction(async (transaction) => {
+			await queryInterface.sequelize.query(
+				`
+        DROP INDEX IF EXISTS idx_user_ext_org_name_partial;
+        `,
+				{ transaction }
+			)
+		})
 	},
 }
