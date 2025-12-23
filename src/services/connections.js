@@ -687,7 +687,7 @@ module.exports = class ConnectionHelper {
 	 * @returns {Promise<Object>} A success response indicating whether the connection exists.
 	 * @throws Will throw an error if an unexpected issue occurs during the check.
 	 */
-	static async checkConnectionIfExists(user_id, body) {
+	static async checkConnectionIfExists(user_id, body, tenantCode) {
 		try {
 			const { friend_id } = body
 
@@ -700,7 +700,7 @@ module.exports = class ConnectionHelper {
 				})
 			}
 
-			const userInfo = await communicationHelper.resolve(friend_id)
+			const userInfo = await communicationHelper.resolve(friend_id, tenantCode)
 			if (!userInfo) {
 				return responses.failureResponse({
 					responseCode: 'CLIENT_ERROR',
@@ -709,7 +709,7 @@ module.exports = class ConnectionHelper {
 				})
 			}
 
-			const connectionCheck = await connectionQueries.getConnection(user_id, userInfo.user_id)
+			const connectionCheck = await connectionQueries.getConnection(user_id, userInfo.user_id, tenantCode)
 
 			if (connectionCheck) {
 				connectionExists = true
