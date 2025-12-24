@@ -27,7 +27,7 @@ const CACHE_CONFIG = (() => {
 	}
 })()
 
-const ENABLE_CACHE = pickBool(CACHE_CONFIG.enableCache, true)
+const ENABLE_CACHE = pickBool(CACHE_CONFIG.enableCache)
 const SHARDS = toInt(CACHE_CONFIG.shards, 32)
 const BATCH = toInt(CACHE_CONFIG.scanBatch, 1000)
 const SHARD_RETENTION_DAYS = toInt(CACHE_CONFIG.shardRetentionDays, 7)
@@ -36,10 +36,12 @@ function toInt(v, d) {
 	const n = parseInt(v, 10)
 	return Number.isFinite(n) ? n : d
 }
-function pickBool(v, d) {
+function pickBool(v) {
 	if (typeof v === 'boolean') return v
-	if (typeof v === 'string') return ['1', 'true', 'yes'].includes(v.toLowerCase())
-	return d
+	if (typeof v === 'string') {
+		return v.toLowerCase() === 'true'
+	}
+	return false
 }
 function tenantKey(tenantCode, parts = []) {
 	return ['tenant', tenantCode, ...parts].join(':')
@@ -72,7 +74,7 @@ function nsTtl(ns, callerTtl) {
  * Otherwise check namespace.useInternal, then global CACHE_CONFIG.useInternal, then false.
  */
 function nsUseInternal(ns, callerUseInternal) {
-	if (typeof callerUseInternal === 'boolean') return callerUseInternal
+	if (callerUseInternal && typeof callerUseInternal === 'boolean') return callerUseInternal
 	const nsCfg = CACHE_CONFIG.namespaces && CACHE_CONFIG.namespaces[ns]
 	if (nsCfg && typeof nsCfg.useInternal === 'boolean') return nsCfg.useInternal
 	if (typeof CACHE_CONFIG.useInternal === 'boolean') return CACHE_CONFIG.useInternal
@@ -229,10 +231,15 @@ async function getOrSet({ key, tenantCode, ttl = undefined, fetchFn, orgCode, ns
 /** Scoped set that uses namespace TTL and namespace useInternal setting
  * Returns the key that was written.
  */
-async function setScoped({ tenantCode, orgCode, ns, id, value, ttl = undefined, useInternal = undefined }) {
+async function setScoped({ tenantCode, orgCode = '', ns, id, value, ttl = undefined, useInternal = undefined }) {
 	if (!namespaceEnabled(ns)) return null
 	const resolvedUseInternal = nsUseInternal(ns, useInternal)
-	const fullKey = await buildKey({ tenantCode, orgCode, ns, id })
+	let fullKey
+	if (orgCode) {
+		fullKey = await buildKey({ tenantCode, orgCode, ns, id })
+	} else {
+		fullKey = await buildKey({ tenantCode, ns, id })
+	}
 	await set(fullKey, value, nsTtl(ns, ttl), { useInternal: resolvedUseInternal })
 	return fullKey
 }
@@ -315,30 +322,27 @@ async function evictTenantByPattern(tenantCode, { patternSuffix = '*' } = {}) {
  * Pattern: tenant:${tenantCode}:org:${orgCode}:sessions:id
  */
 const sessions = {
-	async get(tenantCode, orgCode, sessionId) {
+	async get(tenantCode, sessionId) {
 		try {
-			const cacheKey = await buildKey({ tenantCode, orgCode: orgCode, ns: 'sessions', id: sessionId })
+			const cacheKey = await buildKey({ tenantCode, ns: 'sessions', id: sessionId })
 			const useInternal = nsUseInternal('sessions')
+
 			const cachedSession = await get(cacheKey, { useInternal })
 			if (cachedSession) {
-				console.log(`💾 Session ${sessionId} retrieved from cache: tenant:${tenantCode}:org:${orgCode}`)
+				console.log(`💾 Session ${sessionId} retrieved from cache: tenant:${tenantCode}`)
 				return cachedSession
 			}
 
 			// Cache miss - fallback to database query
-			console.log(
-				`💾 Session ${sessionId} cache miss, fetching from database: tenant:${tenantCode}:org:${orgCode}`
-			)
-			const sessionFromDb = await sessionQueries.findById(sessionId, tenantCode)
-			// Note: NOT caching here - let the service layer cache the enriched session
-			return sessionFromDb
+			console.log(`💾 Session ${sessionId} cache miss, fetching from database: tenant:${tenantCode}`)
+			return null
 		} catch (error) {
 			console.error(`❌ Failed to get session ${sessionId} from cache/database:`, error)
 			return null
 		}
 	},
 
-	async set(tenantCode, orgCode, sessionId, sessionData, customTtl = null) {
+	async set(tenantCode, sessionId, sessionData, customTtl = null) {
 		// Calculate special TTL for sessions based on end_date + 1 day
 		let ttl = customTtl
 		if (!ttl && sessionData.end_date) {
@@ -351,7 +355,6 @@ const sessions = {
 
 		return setScoped({
 			tenantCode,
-			orgCode: orgCode,
 			ns: 'sessions',
 			id: sessionId,
 			value: sessionData,
@@ -359,14 +362,14 @@ const sessions = {
 		})
 	},
 
-	async delete(tenantCode, orgCode, sessionId) {
+	async delete(tenantCode, sessionId) {
 		const useInternal = nsUseInternal('sessions')
-		const cacheKey = await buildKey({ tenantCode, orgCode: orgCode, ns: 'sessions', id: sessionId })
+		const cacheKey = await buildKey({ tenantCode, ns: 'sessions', id: sessionId })
 		return del(cacheKey, { useInternal })
 	},
 
-	async reset(tenantCode, orgCode, sessionId, sessionData, customTtl = null) {
-		return this.set(tenantCode, orgCode, sessionId, sessionData, customTtl)
+	async reset(tenantCode, sessionId, sessionData, customTtl = null) {
+		return this.set(tenantCode, sessionId, sessionData, customTtl)
 	},
 
 	/**
@@ -376,9 +379,9 @@ const sessions = {
 	 * @param {string} sessionId - Session ID
 	 * @returns {Promise<Object|null>} Session data from cache or null
 	 */
-	async getCacheOnly(tenantCode, organizationCode, sessionId) {
+	async getCacheOnly(tenantCode, sessionId) {
 		try {
-			const cacheKey = await buildKey({ tenantCode, orgCode: organizationCode, ns: 'sessions', id: sessionId })
+			const cacheKey = await buildKey({ tenantCode, ns: 'sessions', id: sessionId })
 			const useInternal = nsUseInternal('sessions')
 			return await get(cacheKey, { useInternal })
 		} catch (error) {

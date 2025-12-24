@@ -241,7 +241,7 @@ module.exports = {
 
 	// Cache configuration with multi-namespace support
 	CACHE_CONFIG: {
-		enableCache: process.env.CACHE_ENABLED !== 'false',
+		enableCache: process.env.CACHE_ENABLED,
 		shards: parseInt(process.env.CACHE_SHARDS) || 32,
 		namespaces: {
 			sessions: {

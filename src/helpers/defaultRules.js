@@ -5,6 +5,9 @@ const menteeQueries = require('@database/queries/userExtension')
 const common = require('@constants/common')
 
 const { isAMentor } = require('@generics/utils')
+const cacheHelper = require('@generics/cacheHelper')
+const { getDefaults } = require('@helpers/getDefaultOrgId')
+const { Op } = require('sequelize')
 
 const operatorMapping = new Map([
 	['equals', '='],
@@ -89,6 +92,27 @@ async function getUserDetails(userId, isAMentor, tenantCode) {
 			return await mentorQueries.getMentorExtension(userId, [], false, tenantCode)
 		} else {
 			return await menteeQueries.getMenteeExtension(userId, [], false, tenantCode)
+		}
+	} catch (error) {
+		console.log(error)
+		throw new Error(`Failed to get user details: ${error.message}`)
+	}
+}
+
+/**
+ * Gets the user details based on user roles from cache or db.
+ *
+ * @param {string} userId - The ID of the user.
+ * @param {Array<string>} userRoles - The roles of the user.
+ * @returns {Promise<Object>} - A promise that resolves to the user details.
+ * @throws {Error} - Throws an error if the user details cannot be retrieved.
+ */
+async function getUserDetailsFromCache(userId, isAMentor, tenantCode, organisationCodes) {
+	try {
+		if (isAMentor) {
+			return await cacheHelper.mentor.get(tenantCode, organisationCodes, userId)
+		} else {
+			return await cacheHelper.mentee.get(tenantCode, organisationCodes, userId)
 		}
 	} catch (error) {
 		console.log(error)
@@ -201,12 +225,15 @@ exports.validateDefaultRulesFilter = async function validateDefaultRulesFilter({
 	roles,
 	requesterOrganizationCode,
 	data,
-	tenantCode,
+	tenant_code,
 }) {
 	try {
+		const defaults = await getDefaults()
+		let orgCodes = { [Op.in]: [requesterOrganizationCode, defaults.orgCode] }
+		let tenantCodes = { [Op.in]: [tenant_code, defaults.tenantCode] }
 		const [userDetails, defaultRules] = await Promise.all([
-			getUserDetails(requesterId, isAMentor(roles), tenantCode),
-			defaultRuleQueries.findAll({ type: ruleType, organization_code: requesterOrganizationCode }, tenantCode),
+			getUserDetailsFromCache(requesterId, isAMentor(roles), tenant_code, requesterOrganizationCode),
+			defaultRuleQueries.findAll({ type: ruleType, organization_code: orgCodes }, tenantCodes),
 		])
 
 		const validConfigs = getValidConfigs(defaultRules || [], roles)

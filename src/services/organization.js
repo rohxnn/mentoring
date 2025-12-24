@@ -70,7 +70,6 @@ module.exports = class OrganizationService {
 	static async createOrgExtension(eventBody, tenantCode) {
 		try {
 			console.log('🎯 [ORG EXTENSION] EVENT BODY: ', JSON.stringify(eventBody, null, 2))
-			console.log('🏗️  [ORG EXTENSION] TENANT CODE PARAM: ', tenantCode)
 			console.log('📋 [ORG EXTENSION] DEFAULT POLICY: ', common.getDefaultOrgPolicies())
 			const extensionData = {
 				...common.getDefaultOrgPolicies(),

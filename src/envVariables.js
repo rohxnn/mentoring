@@ -602,6 +602,11 @@ let enviromentVariables = {
 		optional: true,
 		default: 'MentoringService',
 	},
+	CACHE_ENABLED: {
+		message: 'Required ENABLE_CACHE to handling health check',
+		optional: true,
+		default: false,
+	},
 }
 
 let success = true

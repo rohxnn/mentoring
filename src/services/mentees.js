@@ -1673,7 +1673,7 @@ module.exports = class MenteesHelper {
 
 			// Step 6: Handle session enrollment
 			if (queryParams.session_id) {
-				const enrolledMentees = await getEnrolledMentees(queryParams.session_id, '', userId, tenantCode)
+				const enrolledMentees = await getEnrolledMentees(queryParams.session_id, {}, tenantCode)
 				extensionDetails.data.forEach((user) => {
 					user.is_enrolled = false
 					const enrolledUser = _.find(enrolledMentees, { id: user.id })
@@ -2061,7 +2061,7 @@ module.exports = class MenteesHelper {
 						roles: roles,
 						requesterOrganizationCode: organizationCode,
 						data: cacheProfileDetails,
-						tenantCode: tenantCode,
+						tenant_code: tenantCode,
 					})
 					if (validateDefaultRules.error && validateDefaultRules.error.missingField) {
 						return responses.failureResponse({
@@ -2141,7 +2141,7 @@ module.exports = class MenteesHelper {
 					roles: roles,
 					requesterOrganizationCode: organizationCode,
 					data: requestedUserExtension,
-					tenantCode: tenantCode,
+					tenant_code: tenantCode,
 				})
 				if (validateDefaultRules.error && validateDefaultRules.error.missingField) {
 					return responses.failureResponse({
@@ -2187,21 +2187,6 @@ module.exports = class MenteesHelper {
 				'phone',
 				'settings',
 			])
-
-			const defaults = await getDefaults()
-			if (!defaults.orgCode)
-				return responses.failureResponse({
-					message: 'DEFAULT_ORG_CODE_NOT_SET',
-					statusCode: httpStatusCode.bad_request,
-					responseCode: 'CLIENT_ERROR',
-				})
-
-			if (!defaults.tenantCode)
-				return responses.failureResponse({
-					message: 'DEFAULT_ORG_CODE_NOT_SET',
-					statusCode: httpStatusCode.bad_request,
-					responseCode: 'CLIENT_ERROR',
-				})
 
 			const menteeExtensionsModelName = await menteeQueries.getModelName()
 

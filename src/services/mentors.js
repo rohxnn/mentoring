@@ -850,7 +850,7 @@ module.exports = class MentorsHelper {
 						roles: roles,
 						requesterOrganizationCode: orgCode,
 						data: requestedMentorExtension,
-						tenantCode: tenantCode,
+						tenant_code: tenantCode,
 					})
 					if (validateDefaultRules.error && validateDefaultRules.error.missingField) {
 						return responses.failureResponse({
@@ -928,7 +928,7 @@ module.exports = class MentorsHelper {
 					roles: roles,
 					requesterOrganizationCode: orgCode,
 					data: mentorExtension,
-					tenantCode: tenantCode,
+					tenant_code: tenantCode,
 				})
 				if (validateDefaultRules.error && validateDefaultRules.error.missingField) {
 					return responses.failureResponse({
@@ -1006,19 +1006,6 @@ module.exports = class MentorsHelper {
 
 			mentorExtension = utils.deleteProperties(mentorExtension, ['phone'])
 
-			const defaults = await getDefaults()
-			if (!defaults.orgCode)
-				return responses.failureResponse({
-					message: 'DEFAULT_ORG_CODE_NOT_SET',
-					statusCode: httpStatusCode.bad_request,
-					responseCode: 'CLIENT_ERROR',
-				})
-			if (!defaults.tenantCode)
-				return responses.failureResponse({
-					message: 'DEFAULT_TENANT_CODE_NOT_SET',
-					statusCode: httpStatusCode.bad_request,
-					responseCode: 'CLIENT_ERROR',
-				})
 			const mentorExtensionsModelName = await mentorQueries.getModelName()
 
 			let entityTypes = await entityTypeCache.getEntityTypesAndEntitiesForModel(

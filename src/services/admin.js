@@ -426,7 +426,7 @@ module.exports = class AdminService {
 
 					// Cache invalidation: Clear session cache after seats_remaining update
 					try {
-						await cacheHelper.sessions.delete(tenantCode, organizationCode, session.id)
+						await cacheHelper.sessions.delete(tenantCode, session.id)
 					} catch (cacheError) {
 						console.error(`Cache deletion failed for session ${session.id}:`, cacheError)
 					}
@@ -642,7 +642,17 @@ module.exports = class AdminService {
 
 			// Unenroll attendees from sessions
 			const sessionIds = removedSessionsDetail.map((session) => session.id)
-			const unenrollCount = await sessionAttendeesQueries.unEnrollAllAttendeesOfSessions(sessionIds)
+			const unenrollDetails = await sessionAttendeesQueries.unEnrollAllAttendeesOfSessions(sessionIds, tenantCode)
+			if (unenrollDetails && unenrollDetails.deletedCount > 0 && Array.isArray(unenrollDetails.deletedRecords)) {
+				for (const menteeData of unenrollDetails.deletedRecords) {
+					try {
+						await cacheHelper.mentee.delete(tenantCode, menteeData.organization_code, menteeData.mentee_id)
+					} catch (cacheError) {
+						console.error(`Cache deletion failed for mentee ${menteeId}:`, cacheError)
+					}
+				}
+			}
+
 			return notificationResult
 		} catch (error) {
 			console.error('An error occurred in notifySessionAttendees:', error)
@@ -673,11 +683,7 @@ module.exports = class AdminService {
 					const sessionDetail = upcomingSessions.find((s) => s.id === session.session_id)
 					if (sessionDetail) {
 						try {
-							await cacheHelper.sessions.delete(
-								tenantCode,
-								sessionDetail.mentor_organization_id,
-								session.session_id
-							)
+							await cacheHelper.sessions.delete(tenantCode, session.session_id)
 						} catch (cacheError) {
 							console.error(`Cache deletion failed for session ${session.session_id}:`, cacheError)
 						}
@@ -1220,7 +1226,7 @@ module.exports = class AdminService {
 			if (removedSessionsDetail && removedSessionsDetail.length > 0) {
 				for (const session of removedSessionsDetail) {
 					try {
-						await cacheHelper.sessions.delete(tenantCode, userOrgCode, session.id)
+						await cacheHelper.sessions.delete(tenantCode, session.id)
 					} catch (cacheError) {
 						console.error(`Cache deletion failed for session ${session.id}:`, cacheError)
 					}
@@ -1265,7 +1271,7 @@ module.exports = class AdminService {
 				// Cache invalidation: Clear session cache for deleted sessions
 				for (const sessionId of sessionIds) {
 					try {
-						await cacheHelper.sessions.delete(tenantCode, userOrgCode, sessionId)
+						await cacheHelper.sessions.delete(tenantCode, sessionId)
 					} catch (cacheError) {
 						console.error(`Cache deletion failed for session ${sessionId}:`, cacheError)
 					}
@@ -1342,7 +1348,7 @@ module.exports = class AdminService {
 
 			for (const sessionId of sessionIds) {
 				try {
-					await cacheHelper.sessions.delete(userTenantCode, userOrgCode, sessionId)
+					await cacheHelper.sessions.delete(userTenantCode, sessionId)
 				} catch (cacheError) {
 					console.error(`Cache deletion failed for session ${sessionId}:`, cacheError)
 				}

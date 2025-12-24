@@ -3136,11 +3136,9 @@
 							"sourceField": "user_roles",
 							"targetField": "mentoring.user_roles[]"
 						}
-					]
+				    ]
                 }
-                
-            ]
-        }
+			]
 		}
 	]
 }

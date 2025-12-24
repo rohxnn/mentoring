@@ -3,7 +3,7 @@
 const sessionRequestQueries = require('@database/queries/requestSessions')
 const connectionQueries = require('@database/queries/connection')
 const common = require('@constants/common')
-
+const cacheHelper = require('@generics/cacheHelper')
 module.exports = class UserServiceHelper {
 	/**
 	 * Fetches counts of pending session and connection requests for a given user.
@@ -37,6 +37,32 @@ module.exports = class UserServiceHelper {
 		} catch (err) {
 			console.error('Error in findRequestCounts:', err)
 			return null
+		}
+	}
+
+	static async getMissingUserIdsAndCacheData(userList, tenantCode) {
+		const missingUserIds = []
+		const cacheFoundData = []
+
+		for (const user of userList) {
+			const userId = user.user_id
+			const orgCode = user.organization_code
+
+			// Check mentees cache, then mentors cache
+			const cachedUser =
+				(await cacheHelper.mentee.getCacheOnly(tenantCode, orgCode, userId)) ??
+				(await cacheHelper.mentor.getCacheOnly(tenantCode, orgCode, userId))
+
+			if (cachedUser) {
+				cacheFoundData.push(cachedUser)
+			} else {
+				missingUserIds.push(userId)
+			}
+		}
+
+		return {
+			missingUserIds,
+			cacheFoundData,
 		}
 	}
 }

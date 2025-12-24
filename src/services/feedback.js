@@ -135,7 +135,9 @@ module.exports = class MenteesHelper {
 
 	static async forms(sessionId, roles, tenantCode, orgCode) {
 		try {
-			let sessioninfo = await cacheHelper.sessions.get(tenantCode, orgCode, sessionId)
+			let sessioninfo =
+				(await cacheHelper.sessions.get(tenantCode, sessionId)) ??
+				(await sessionQueries.findById(sessionId, tenantCode))
 
 			if (!sessioninfo) {
 				return responses.failureResponse({
@@ -186,8 +188,9 @@ module.exports = class MenteesHelper {
 		}
 		try {
 			//get session details
-			let sessionInfo = await cacheHelper.sessions.get(tenantCode, orgCode, sessionId)
-
+			let sessionInfo =
+				(await cacheHelper.sessions.get(tenantCode, sessionId)) ??
+				(await sessionQueries.findById(sessionId, tenantCode))
 			if (!sessionInfo) {
 				return responses.failureResponse({
 					message: 'SESSION_NOT_FOUND',
@@ -254,7 +257,7 @@ module.exports = class MenteesHelper {
 						})
 					}
 					try {
-						await cacheHelper.sessions.delete(tenantCode, orgCode, sessionId)
+						await cacheHelper.sessions.delete(tenantCode, sessionId)
 					} catch (cacheError) {
 						console.error(`❌ Failed to delete session cache after deletion:`, cacheError)
 					}
