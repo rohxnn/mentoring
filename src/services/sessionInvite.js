@@ -21,6 +21,7 @@ const inviteeFileDir = ProjectRootDir + common.tempFolderForBulkUpload
 const menteeExtensionQueries = require('@database/queries/userExtension')
 const uploadToCloud = require('@helpers/uploadFileToCloud')
 const cacheHelper = require('@generics/cacheHelper')
+const responses = require('@helpers/responses')
 
 module.exports = class UserInviteHelper {
 	static async uploadSession(data) {
@@ -36,8 +37,32 @@ module.exports = class UserInviteHelper {
 				const defaultOrgCode = data.user.defaultOrganiztionCode
 				const defaultTenantCode = data.user.defaultTenantCode
 
+				console.log(`👤 [USER LOOKUP] Getting user details for ID: ${userId}`)
 				const mentor = await cacheHelper.mentee.get(tenantCode, userId)
-				if (!mentor) throw new Error('USER_NOT_FOUND')
+				if (!mentor) {
+					console.log(`❌ [USER NOT FOUND] User ${userId} not found in cache`)
+					throw new Error('USER_NOT_FOUND')
+				}
+				console.log(`✅ [USER FOUND] User: ${mentor.name}, Is Mentor: ${mentor.is_mentor}`)
+				console.log(`📧 [EMAIL CHECK] mentor.email: ${mentor.email}`)
+				console.log(`📋 [USER KEYS] mentor object keys: [${Object.keys(mentor).join(', ')}]`)
+
+				// If email is missing from cache, get fresh user data from database
+				let userWithEmail = mentor
+				if (!mentor.email) {
+					console.log(`⚠️ [EMAIL MISSING] Email not in cache, fetching fresh user data from database`)
+					const userQueries = require('@database/queries/userExtension')
+					userWithEmail = await userQueries.getMenteeExtension(userId, [], false, tenantCode)
+					console.log(`📧 [FRESH EMAIL CHECK] Fresh user email: ${userWithEmail?.email}`)
+					console.log(
+						`📋 [FRESH USER KEYS] Fresh user keys: [${Object.keys(userWithEmail || {}).join(', ')}]`
+					)
+
+					// If still no email, log detailed info
+					if (!userWithEmail?.email) {
+						console.log(`❌ [CRITICAL] User ${userId} has no email in database either!`)
+					}
+				}
 
 				const isMentor = mentor.is_mentor
 
