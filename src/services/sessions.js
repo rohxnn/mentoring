@@ -2189,16 +2189,18 @@ module.exports = class SessionsHelper {
 				})
 			}
 
-			// Update seat count (decrease available seats)
-			const seatUpdateResult = await sessionQueries.updateEnrollmentCount(sessionId, false, tenantCode)
-			if (!seatUpdateResult) {
-				// Rollback the enrollment if seat update fails
-				await sessionAttendeesQueries.unEnrollFromSession(sessionId, userId, tenantCode)
-				return responses.failureResponse({
-					message: 'FAILED_TO_UPDATE_SEAT_COUNT',
-					statusCode: httpStatusCode.internal_server_error,
-					responseCode: 'SERVER_ERROR',
-				})
+			// Update seat count (decrease available seats) - only if user is not the session creator
+			if (session.created_by !== userId) {
+				const seatUpdateResult = await sessionQueries.updateEnrollmentCount(sessionId, false, tenantCode)
+				if (!seatUpdateResult) {
+					// Rollback the enrollment if seat update fails
+					await sessionAttendeesQueries.unEnrollFromSession(sessionId, userId, tenantCode)
+					return responses.failureResponse({
+						message: 'FAILED_TO_UPDATE_SEAT_COUNT',
+						statusCode: httpStatusCode.internal_server_error,
+						responseCode: 'SERVER_ERROR',
+					})
+				}
 			}
 
 			const templateData = await cacheHelper.notificationTemplates.get(tenantCode, orgCode, emailTemplateCode)
@@ -2235,8 +2237,10 @@ module.exports = class SessionsHelper {
 				// Cache invalidation failure - continue operation
 			}
 
-			// Clear user cache since sessions_attended count changed
-			await this._clearUserCache(userId, tenantCode)
+			// Clear user cache since sessions_attended count changed - only if user is not the session creator
+			if (session.created_by !== userId) {
+				await this._clearUserCache(userId, tenantCode)
+			}
 
 			return responses.successResponse({
 				statusCode: httpStatusCode.created,
@@ -2380,8 +2384,10 @@ module.exports = class SessionsHelper {
 				// Cache invalidation failure - continue operation
 			}
 
-			// Clear user cache since sessions_attended count changed
-			await this._clearUserCache(userId, tenantCode)
+			// Clear user cache since sessions_attended count changed - only if user is not the session creator
+			if (session.created_by !== userId) {
+				await this._clearUserCache(userId, tenantCode)
+			}
 
 			return responses.successResponse({
 				statusCode: httpStatusCode.accepted,
