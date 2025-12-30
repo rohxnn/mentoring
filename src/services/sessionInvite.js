@@ -194,7 +194,13 @@ module.exports = class UserInviteHelper {
 				})
 
 				// upload output file to cloud
-				const uploadRes = await uploadToCloud.uploadFileToCloud(outputFilename, inviteeFileDir, userId, orgId)
+				const uploadRes = await uploadToCloud.uploadFileToCloud(
+					outputFilename,
+					inviteeFileDir,
+					userId,
+					orgId,
+					tenantCode
+				)
 				const output_path = uploadRes.result.uploadDest
 				console.log(`✅ [STAGE 6 SUCCESS] File uploaded to cloud: ${output_path}`)
 
