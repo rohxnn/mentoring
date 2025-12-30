@@ -8,7 +8,7 @@ exports.create = async (data, tenantCode) => {
 		const result = createFileUpload.get({ plain: true })
 		return result
 	} catch (error) {
-		throw error
+		return error
 	}
 }
 
@@ -28,7 +28,7 @@ exports.findOne = async (filter, tenantCode, options = {}) => {
 			raw: true,
 		})
 	} catch (error) {
-		throw error
+		return error
 	}
 }
 
@@ -50,7 +50,7 @@ exports.update = async (filter, tenantCode, update, options = {}) => {
 
 		return res
 	} catch (error) {
-		throw error
+		return error
 	}
 }
 
@@ -82,6 +82,6 @@ exports.listUploads = async (page, limit, status, orgCode, tenantCode) => {
 		}
 		return transformedResult
 	} catch (error) {
-		throw error
+		return error
 	}
 }

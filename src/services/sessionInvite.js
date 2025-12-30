@@ -29,16 +29,6 @@ module.exports = class UserInviteHelper {
 			const startTime = Date.now()
 			const jobId = `${data.fileDetails.id}_${startTime}`
 
-			console.log(`\n🚀 [STAGE 1 - INIT] Session Upload Started - Job ID: ${jobId}`)
-			console.log(`📊 [INIT] Parameters:`, {
-				fileId: data.fileDetails.id,
-				filePath: data.fileDetails.input_path,
-				userId: data.user.userId,
-				orgId: data.user.organization_id,
-				tenantCode: data.user.tenant_code,
-				orgCode: data.user.organization_code,
-			})
-
 			try {
 				const filePath = data.fileDetails.input_path
 				const userId = data.user.userId
@@ -50,23 +40,14 @@ module.exports = class UserInviteHelper {
 				const defaultOrgCode = data.user.defaultOrganiztionCode
 				const defaultTenantCode = data.user.defaultTenantCode
 
-				console.log(`\n👤 [STAGE 2 - USER LOOKUP] Getting user details for ID: ${userId}`)
-				console.log(`🔍 [USER LOOKUP] Cache lookup with tenantCode: ${tenantCode}, userId: ${userId}`)
-
 				const mentor = await cacheHelper.mentee.get(tenantCode, userId)
 				if (!mentor) {
-					console.log(`❌ [STAGE 2 FAILED] User ${userId} not found in cache - tenantCode: ${tenantCode}`)
-					console.log(`💥 [ERROR] Job ${jobId} failed at STAGE 2 - USER LOOKUP`)
 					throw new Error('USER_NOT_FOUND')
 				}
-				console.log(`✅ [STAGE 2 SUCCESS] User found: ${mentor.name}, Is Mentor: ${mentor.is_mentor}`)
-				console.log(`📧 [USER DATA] Email: ${mentor.email}`)
-				console.log(`📋 [USER DATA] Available keys: [${Object.keys(mentor).join(', ')}]`)
 
 				// If email is missing from cache, get fresh user data with email from database
 				let userWithEmail = mentor
 				if (!mentor.email) {
-					console.log(`⚠️ [EMAIL MISSING] Email not in cache, fetching fresh user data from database`)
 					const userQueries = require('@database/queries/userExtension')
 
 					// Explicitly request email field and don't use cache
@@ -76,16 +57,9 @@ module.exports = class UserInviteHelper {
 						false,
 						tenantCode
 					)
-					console.log(`📧 [FRESH EMAIL CHECK] Fresh user email: ${userWithEmail?.email}`)
-					console.log(
-						`📋 [FRESH USER KEYS] Fresh user keys: [${Object.keys(userWithEmail || {}).join(', ')}]`
-					)
 
 					// If still no email, check email field specifically
 					if (!userWithEmail?.email) {
-						console.log(`❌ [CRITICAL] User ${userId} has no email field in database!`)
-						console.log(`🔍 [DEBUG] This may cause issues with email notifications later in the process`)
-
 						// Try to get email using a direct query
 						try {
 							const directEmailQuery = await userQueries.getUsersByUserIds(
@@ -95,16 +69,12 @@ module.exports = class UserInviteHelper {
 								false
 							)
 							if (directEmailQuery && directEmailQuery.length > 0 && directEmailQuery[0].email) {
-								console.log(`✅ [EMAIL FOUND] Direct query found email: ${directEmailQuery[0].email}`)
 								userWithEmail = { ...userWithEmail, email: directEmailQuery[0].email }
-							} else {
-								console.log(`⚠️ [EMAIL MISSING] Email truly missing from user record`)
 							}
 						} catch (emailQueryError) {
-							console.log(`❌ [EMAIL QUERY ERROR] ${emailQueryError.message}`)
+							console.log(`Email query error: ${emailQueryError.message}`)
 						}
 					} else {
-						console.log(`✅ [EMAIL FOUND] Successfully retrieved email: ${userWithEmail.email}`)
 						// Update the mentor object with email for later use
 						mentor.email = userWithEmail.email
 					}
@@ -112,52 +82,18 @@ module.exports = class UserInviteHelper {
 
 				const isMentor = mentor.is_mentor
 
-				console.log(`\n📥 [STAGE 3 - FILE DOWNLOAD] Downloading CSV file from: ${filePath}`)
-				console.log(`🔍 [FILE DOWNLOAD] Parameters: filePath=${filePath}`)
-
 				// download file to local directory
 				const response = await this.downloadCSV(filePath)
 				if (!response.success) {
-					console.log(`❌ [STAGE 3 FAILED] File download failed for: ${filePath}`)
-					console.log(`💥 [ERROR] Job ${jobId} failed at STAGE 3 - FILE DOWNLOAD`)
 					throw new Error('FAILED_TO_DOWNLOAD')
 				}
-				console.log(`✅ [STAGE 3 SUCCESS] File downloaded to: ${response.result.downloadPath}`)
-				console.log(
-					`📁 [FILE INFO] Downloaded file size: ${
-						fs.existsSync(response.result.downloadPath)
-							? fs.statSync(response.result.downloadPath).size
-							: 'unknown'
-					} bytes`
-				)
-
-				console.log(`\n📊 [STAGE 4 - CSV PARSING] Extracting data from CSV: ${response.result.downloadPath}`)
 
 				// extract data from csv
 				const parsedFileData = await this.extractDataFromCSV(response.result.downloadPath)
 				if (!parsedFileData.success) {
-					console.log(`❌ [STAGE 4 FAILED] CSV parsing failed`)
-					console.log(`💥 [ERROR] Job ${jobId} failed at STAGE 4 - CSV PARSING`)
 					throw new Error('FAILED_TO_READ_CSV')
 				}
 				const invitees = parsedFileData.result.data
-				console.log(`✅ [STAGE 4 SUCCESS] CSV parsed successfully - ${invitees.length} rows extracted`)
-				console.log(
-					`📋 [CSV DATA] Sample row keys: [${
-						invitees.length > 0 ? Object.keys(invitees[0]).join(', ') : 'no data'
-					}]`
-				)
-
-				console.log(`\n⚙️ [STAGE 5 - SESSION PROCESSING] Processing ${invitees.length} session records`)
-				console.log(`🔍 [SESSION PROCESSING] Parameters:`, {
-					inviteeCount: invitees.length,
-					userId: userId,
-					orgId: orgId,
-					isMentor: isMentor,
-					tenantCode: tenantCode,
-					orgCode: orgCode,
-					outputDir: inviteeFileDir,
-				})
 
 				// create outPut file and create invites
 				const createResponse = await this.processSessionDetails(
@@ -174,24 +110,10 @@ module.exports = class UserInviteHelper {
 				)
 
 				if (createResponse.success == false) {
-					console.log(`❌ [STAGE 5 FAILED] Session processing failed: ${createResponse.message}`)
-					console.log(`💥 [ERROR] Job ${jobId} failed at STAGE 5 - SESSION PROCESSING`)
-				} else {
-					console.log(`✅ [STAGE 5 SUCCESS] Session processing completed`)
-					console.log(
-						`📊 [PROCESSING RESULTS] Valid: ${createResponse.result.validRowsCount}, Invalid: ${createResponse.result.invalidRowsCount}`
-					)
+					throw new Error(createResponse.message)
 				}
 
 				const outputFilename = path.basename(createResponse.result.outputFilePath)
-				console.log(`📄 [OUTPUT] Generated file: ${outputFilename}`)
-				console.log(`\n☁️ [STAGE 6 - CLOUD UPLOAD] Uploading output file to cloud`)
-				console.log(`🔍 [CLOUD UPLOAD] Parameters:`, {
-					filename: outputFilename,
-					sourceDir: inviteeFileDir,
-					userId: userId,
-					orgId: orgId,
-				})
 
 				// upload output file to cloud
 				const uploadRes = await uploadToCloud.uploadFileToCloud(
@@ -202,9 +124,7 @@ module.exports = class UserInviteHelper {
 					tenantCode
 				)
 				const output_path = uploadRes.result.uploadDest
-				console.log(`✅ [STAGE 6 SUCCESS] File uploaded to cloud: ${output_path}`)
 
-				console.log(`\n💾 [STAGE 7 - STATUS UPDATE] Updating file upload status in database`)
 				const finalStatus =
 					createResponse.result.isErrorOccured == true ? common.STATUS.FAILED : common.STATUS.PROCESSED
 				const update = {
@@ -212,13 +132,6 @@ module.exports = class UserInviteHelper {
 					updated_by: userId,
 					status: finalStatus,
 				}
-				console.log(`🔍 [STATUS UPDATE] Parameters:`, {
-					fileId: data.fileDetails.id,
-					organizationId: orgId,
-					tenantCode: tenantCode,
-					newStatus: finalStatus,
-					outputPath: output_path,
-				})
 
 				//update output path in file uploads
 				try {
@@ -229,60 +142,32 @@ module.exports = class UserInviteHelper {
 					)
 
 					if (rowsAffected === 0) {
-						console.log(`❌ [STAGE 7 FAILED] Database update failed - no rows affected`)
-						console.log(`💥 [ERROR] Job ${jobId} failed at STAGE 7 - STATUS UPDATE`)
 						throw new Error('FILE_UPLOAD_MODIFY_ERROR')
 					}
-					console.log(
-						`✅ [STAGE 7 SUCCESS] Database updated - ${rowsAffected} row(s) affected, status: ${finalStatus}`
-					)
 				} catch (dbError) {
-					console.log(`❌ [STAGE 7 CRITICAL] Database update error:`, dbError.message || dbError)
-					console.log(`💥 [ERROR] Job ${jobId} failed at STAGE 7 - DATABASE ERROR`)
-					console.log(`🔍 [DEBUG] Update parameters:`, {
-						filter: { id: data.fileDetails.id, organization_id: String(orgId) },
-						tenantCode,
-						update,
-					})
 					throw new Error('DATABASE_UPDATE_ERROR: ' + (dbError.message || dbError))
 				}
-
-				console.log(`\n📧 [STAGE 8 - EMAIL NOTIFICATION] Sending completion notification`)
 
 				// send email to admin
 				const templateCode = process.env.SESSION_UPLOAD_EMAIL_TEMPLATE_CODE
 				if (templateCode) {
-					console.log(`🔍 [EMAIL] Template code: ${templateCode}`)
-
 					let defaults = null
 					try {
 						defaults = await getDefaults()
 					} catch (defaultsError) {
-						console.log(`⚠️ [EMAIL] Failed to get defaults: ${defaultsError.message}`)
 						// Use environment variable defaults as fallback
 						defaults = {
 							orgCode: process.env.DEFAULT_ORGANISATION_CODE || 'default_code',
 							tenantCode: process.env.DEFAULT_TENANT_CODE || 'default',
 						}
-						console.log(
-							`🔄 [EMAIL] Using fallback defaults: orgCode=${defaults.orgCode}, tenantCode=${defaults.tenantCode}`
-						)
 					}
 
 					if (!defaults || !defaults.orgCode) {
-						console.log(`❌ [STAGE 8 FAILED] Default org code not set and no fallback available`)
-						console.log(`💥 [ERROR] Job ${jobId} failed at STAGE 8 - EMAIL NOTIFICATION (defaults)`)
 						throw new Error('DEFAULT_ORG_CODE_NOT_SET')
 					}
 					if (!defaults.tenantCode) {
-						console.log(`❌ [STAGE 8 FAILED] Default tenant code not set and no fallback available`)
-						console.log(`💥 [ERROR] Job ${jobId} failed at STAGE 8 - EMAIL NOTIFICATION (defaults)`)
 						throw new Error('DEFAULT_TENANT_CODE_NOT_SET')
 					}
-
-					console.log(
-						`🔍 [EMAIL] Getting template for tenantCode: ${tenantCode}, orgCode: ${data.user.organization_code}`
-					)
 
 					// send mail to mentors on session creation if session created by manager
 					const templateData = await cacheHelper.notificationTemplates.get(
@@ -294,7 +179,6 @@ module.exports = class UserInviteHelper {
 					if (templateData) {
 						// Use the email we retrieved earlier, fallback to data.user.email
 						const emailToUse = userWithEmail?.email || mentor?.email || data.user.email
-						console.log(`📧 [EMAIL] Template found, sending notification to: ${emailToUse}`)
 
 						// Prepare user data with correct email
 						const userDataForEmail = {
@@ -305,39 +189,18 @@ module.exports = class UserInviteHelper {
 
 						const sessionUploadURL = await utils.getDownloadableUrl(output_path)
 						await this.sendSessionManagerEmail(templateData, userDataForEmail, sessionUploadURL) //Rename this to function to generic name since this function is used for both Invitee & Org-admin.
-						console.log(`✅ [STAGE 8 SUCCESS] Email notification sent successfully`)
-					} else {
-						console.log(`⚠️ [EMAIL] No template found for code: ${templateCode}`)
-						console.log(`✅ [STAGE 8 SKIPPED] Email notification skipped - no template`)
 					}
-				} else {
-					console.log(`✅ [STAGE 8 SKIPPED] Email notification skipped - no template code configured`)
 				}
-
-				console.log(`\n🧹 [STAGE 9 - CLEANUP] Cleaning up temporary files`)
-				console.log(`🗑️ [CLEANUP] Removing: ${response.result.downloadPath}`)
-				console.log(`🗑️ [CLEANUP] Removing: ${createResponse.result.outputFilePath}`)
 
 				// delete the downloaded file and output file.
 				utils.clearFile(response.result.downloadPath)
 				utils.clearFile(createResponse.result.outputFilePath)
-
-				const totalTime = Date.now() - startTime
-				console.log(`\n🎉 [SUCCESS] Job ${jobId} completed successfully in ${totalTime}ms`)
-				console.log(`✅ [FINAL STATUS] Upload processed successfully - status updated to ${finalStatus}`)
 
 				return resolve({
 					success: true,
 					message: 'CSV_UPLOADED_SUCCESSFULLY',
 				})
 			} catch (error) {
-				const totalTime = Date.now() - startTime
-				console.log(`\n💥 [CRITICAL ERROR] Job ${jobId} failed after ${totalTime}ms`)
-				console.log(`❌ [ERROR TYPE] ${error.constructor.name}`)
-				console.log(`❌ [ERROR MESSAGE] ${error.message}`)
-				console.log(`📊 [ERROR STACK] ${error.stack}`)
-				console.log(`🔍 [DEBUG] This error prevented the upload status from being updated`)
-
 				return reject({
 					success: false,
 					message: error.message,
@@ -348,9 +211,7 @@ module.exports = class UserInviteHelper {
 
 	static async downloadCSV(filePath) {
 		try {
-			console.log(`📥 [DOWNLOAD] Getting downloadable URL for: ${filePath}`)
 			const downloadableUrl = await utils.getDownloadableUrl(filePath)
-			console.log(`🔗 [DOWNLOAD] Generated URL: ${downloadableUrl}`)
 
 			let fileName = path.basename(downloadableUrl)
 
@@ -359,9 +220,7 @@ module.exports = class UserInviteHelper {
 			// Extract the portion of the string before the '?' if it exists, otherwise use the entire string
 			fileName = index !== -1 ? fileName.substring(0, index) : fileName
 			const downloadPath = path.join(inviteeFileDir, fileName)
-			console.log(`📁 [DOWNLOAD] Target download path: ${downloadPath}`)
 
-			console.log(`🌐 [DOWNLOAD] Making HTTP request to download file...`)
 			const response = await axios.get(downloadableUrl, {
 				responseType: common.responseType,
 			})
@@ -369,20 +228,16 @@ module.exports = class UserInviteHelper {
 			const writeStream = fs.createWriteStream(downloadPath)
 			response.data.pipe(writeStream)
 
-			console.log(`💾 [DOWNLOAD] Writing file to disk...`)
 			await new Promise((resolve, reject) => {
 				writeStream.on('finish', () => {
-					console.log(`✅ [DOWNLOAD] File write completed`)
 					resolve()
 				})
 				writeStream.on('error', (err) => {
-					console.log(`❌ [DOWNLOAD] File write failed: ${err.message}`)
 					reject(new Error('FAILED_TO_DOWNLOAD_FILE'))
 				})
 			})
 
 			const stats = fs.statSync(downloadPath)
-			console.log(`📊 [DOWNLOAD] Downloaded file size: ${stats.size} bytes`)
 
 			return {
 				success: true,
@@ -393,7 +248,6 @@ module.exports = class UserInviteHelper {
 				},
 			}
 		} catch (error) {
-			console.log(`❌ [DOWNLOAD ERROR] ${error.message}`)
 			return {
 				success: false,
 				message: error.message,
@@ -412,19 +266,12 @@ module.exports = class UserInviteHelper {
 
 	static async extractDataFromCSV(csvFilePath) {
 		try {
-			console.log(`📊 [CSV PARSE] Starting CSV parsing for: ${csvFilePath}`)
 			const parsedCSVData = []
 
-			console.log(`📄 [CSV PARSE] Reading CSV file with csvtojson...`)
 			let csvToJsonData = await csv().fromFile(csvFilePath)
-			console.log(`📊 [CSV PARSE] Raw CSV data parsed - ${csvToJsonData.length} rows found`)
 
 			// Filter out empty rows
-			const beforeFilterCount = csvToJsonData.length
 			csvToJsonData = csvToJsonData.filter((row) => Object.values(row).some((value) => value.trim() !== ''))
-			console.log(
-				`🔍 [CSV PARSE] After filtering empty rows: ${csvToJsonData.length}/${beforeFilterCount} rows remaining`
-			)
 
 			for (const row of csvToJsonData) {
 				const {
@@ -638,19 +485,11 @@ module.exports = class UserInviteHelper {
 				}
 			}
 
-			console.log(`✅ [CSV PARSE] CSV parsing completed successfully`)
-			console.log(`📊 [CSV PARSE] Final result: ${parsedCSVData.length} rows processed`)
-			if (parsedCSVData.length > 0) {
-				console.log(`📋 [CSV PARSE] Sample parsed row keys: [${Object.keys(parsedCSVData[0]).join(', ')}]`)
-			}
-
 			return {
 				success: true,
 				result: { data: parsedCSVData },
 			}
 		} catch (error) {
-			console.log(`❌ [CSV PARSE ERROR] ${error.message}`)
-			console.log(`📊 [CSV PARSE ERROR] Stack: ${error.stack}`)
 			return {
 				success: false,
 				message: error.message,
