@@ -63,20 +63,50 @@ module.exports = class UserInviteHelper {
 				console.log(`📧 [USER DATA] Email: ${mentor.email}`)
 				console.log(`📋 [USER DATA] Available keys: [${Object.keys(mentor).join(', ')}]`)
 
-				// If email is missing from cache, get fresh user data from database
+				// If email is missing from cache, get fresh user data with email from database
 				let userWithEmail = mentor
 				if (!mentor.email) {
 					console.log(`⚠️ [EMAIL MISSING] Email not in cache, fetching fresh user data from database`)
 					const userQueries = require('@database/queries/userExtension')
-					userWithEmail = await userQueries.getMenteeExtension(userId, [], false, tenantCode)
+
+					// Explicitly request email field and don't use cache
+					userWithEmail = await userQueries.getMenteeExtension(
+						userId,
+						['user_id', 'name', 'email', 'is_mentor', 'organization_code', 'tenant_code'],
+						false,
+						tenantCode
+					)
 					console.log(`📧 [FRESH EMAIL CHECK] Fresh user email: ${userWithEmail?.email}`)
 					console.log(
 						`📋 [FRESH USER KEYS] Fresh user keys: [${Object.keys(userWithEmail || {}).join(', ')}]`
 					)
 
-					// If still no email, log detailed info
+					// If still no email, check email field specifically
 					if (!userWithEmail?.email) {
-						console.log(`❌ [CRITICAL] User ${userId} has no email in database either!`)
+						console.log(`❌ [CRITICAL] User ${userId} has no email field in database!`)
+						console.log(`🔍 [DEBUG] This may cause issues with email notifications later in the process`)
+
+						// Try to get email using a direct query
+						try {
+							const directEmailQuery = await userQueries.getUsersByUserIds(
+								[userId],
+								{ attributes: ['user_id', 'name', 'email'] },
+								tenantCode,
+								false
+							)
+							if (directEmailQuery && directEmailQuery.length > 0 && directEmailQuery[0].email) {
+								console.log(`✅ [EMAIL FOUND] Direct query found email: ${directEmailQuery[0].email}`)
+								userWithEmail = { ...userWithEmail, email: directEmailQuery[0].email }
+							} else {
+								console.log(`⚠️ [EMAIL MISSING] Email truly missing from user record`)
+							}
+						} catch (emailQueryError) {
+							console.log(`❌ [EMAIL QUERY ERROR] ${emailQueryError.message}`)
+						}
+					} else {
+						console.log(`✅ [EMAIL FOUND] Successfully retrieved email: ${userWithEmail.email}`)
+						// Update the mentor object with email for later use
+						mentor.email = userWithEmail.email
 					}
 				}
 
@@ -185,20 +215,31 @@ module.exports = class UserInviteHelper {
 				})
 
 				//update output path in file uploads
-				const rowsAffected = await fileUploadQueries.update(
-					{ id: data.fileDetails.id, organization_id: orgId },
-					tenantCode,
-					update
-				)
+				try {
+					const rowsAffected = await fileUploadQueries.update(
+						{ id: data.fileDetails.id, organization_id: String(orgId) },
+						tenantCode,
+						update
+					)
 
-				if (rowsAffected === 0) {
-					console.log(`❌ [STAGE 7 FAILED] Database update failed - no rows affected`)
-					console.log(`💥 [ERROR] Job ${jobId} failed at STAGE 7 - STATUS UPDATE`)
-					throw new Error('FILE_UPLOAD_MODIFY_ERROR')
+					if (rowsAffected === 0) {
+						console.log(`❌ [STAGE 7 FAILED] Database update failed - no rows affected`)
+						console.log(`💥 [ERROR] Job ${jobId} failed at STAGE 7 - STATUS UPDATE`)
+						throw new Error('FILE_UPLOAD_MODIFY_ERROR')
+					}
+					console.log(
+						`✅ [STAGE 7 SUCCESS] Database updated - ${rowsAffected} row(s) affected, status: ${finalStatus}`
+					)
+				} catch (dbError) {
+					console.log(`❌ [STAGE 7 CRITICAL] Database update error:`, dbError.message || dbError)
+					console.log(`💥 [ERROR] Job ${jobId} failed at STAGE 7 - DATABASE ERROR`)
+					console.log(`🔍 [DEBUG] Update parameters:`, {
+						filter: { id: data.fileDetails.id, organization_id: String(orgId) },
+						tenantCode,
+						update,
+					})
+					throw new Error('DATABASE_UPDATE_ERROR: ' + (dbError.message || dbError))
 				}
-				console.log(
-					`✅ [STAGE 7 SUCCESS] Database updated - ${rowsAffected} row(s) affected, status: ${finalStatus}`
-				)
 
 				console.log(`\n📧 [STAGE 8 - EMAIL NOTIFICATION] Sending completion notification`)
 
@@ -207,14 +248,28 @@ module.exports = class UserInviteHelper {
 				if (templateCode) {
 					console.log(`🔍 [EMAIL] Template code: ${templateCode}`)
 
-					const defaults = await getDefaults()
-					if (!defaults.orgCode) {
-						console.log(`❌ [STAGE 8 FAILED] Default org code not set`)
+					let defaults = null
+					try {
+						defaults = await getDefaults()
+					} catch (defaultsError) {
+						console.log(`⚠️ [EMAIL] Failed to get defaults: ${defaultsError.message}`)
+						// Use environment variable defaults as fallback
+						defaults = {
+							orgCode: process.env.DEFAULT_ORGANISATION_CODE || 'default_code',
+							tenantCode: process.env.DEFAULT_TENANT_CODE || 'default',
+						}
+						console.log(
+							`🔄 [EMAIL] Using fallback defaults: orgCode=${defaults.orgCode}, tenantCode=${defaults.tenantCode}`
+						)
+					}
+
+					if (!defaults || !defaults.orgCode) {
+						console.log(`❌ [STAGE 8 FAILED] Default org code not set and no fallback available`)
 						console.log(`💥 [ERROR] Job ${jobId} failed at STAGE 8 - EMAIL NOTIFICATION (defaults)`)
 						throw new Error('DEFAULT_ORG_CODE_NOT_SET')
 					}
 					if (!defaults.tenantCode) {
-						console.log(`❌ [STAGE 8 FAILED] Default tenant code not set`)
+						console.log(`❌ [STAGE 8 FAILED] Default tenant code not set and no fallback available`)
 						console.log(`💥 [ERROR] Job ${jobId} failed at STAGE 8 - EMAIL NOTIFICATION (defaults)`)
 						throw new Error('DEFAULT_TENANT_CODE_NOT_SET')
 					}
@@ -231,9 +286,19 @@ module.exports = class UserInviteHelper {
 					)
 
 					if (templateData) {
-						console.log(`📧 [EMAIL] Template found, sending notification to: ${data.user.email}`)
+						// Use the email we retrieved earlier, fallback to data.user.email
+						const emailToUse = userWithEmail?.email || mentor?.email || data.user.email
+						console.log(`📧 [EMAIL] Template found, sending notification to: ${emailToUse}`)
+
+						// Prepare user data with correct email
+						const userDataForEmail = {
+							...data.user,
+							email: emailToUse,
+							name: userWithEmail?.name || mentor?.name || data.user.name,
+						}
+
 						const sessionUploadURL = await utils.getDownloadableUrl(output_path)
-						await this.sendSessionManagerEmail(templateData, data.user, sessionUploadURL) //Rename this to function to generic name since this function is used for both Invitee & Org-admin.
+						await this.sendSessionManagerEmail(templateData, userDataForEmail, sessionUploadURL) //Rename this to function to generic name since this function is used for both Invitee & Org-admin.
 						console.log(`✅ [STAGE 8 SUCCESS] Email notification sent successfully`)
 					} else {
 						console.log(`⚠️ [EMAIL] No template found for code: ${templateCode}`)
