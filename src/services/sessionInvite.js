@@ -12,7 +12,6 @@ const sessionService = require('@services/sessions')
 const ProjectRootDir = path.join(__dirname, '../')
 const fileUploadQueries = require('@database/queries/fileUpload')
 const kafkaCommunication = require('@generics/kafka-communication')
-const { getDefaults } = require('@helpers/getDefaultOrgId')
 const sessionQueries = require('@database/queries/sessions')
 const entityTypeCache = require('@helpers/entityTypeCache')
 const { Op } = require('sequelize')
@@ -29,43 +28,6 @@ module.exports = class UserInviteHelper {
 			const jobId = `${data.fileDetails.id}_${startTime}`
 
 			try {
-				// Validate defaults early before processing begins
-				let defaults = null
-				try {
-					defaults = await getDefaults()
-				} catch (defaultsError) {
-					// Use environment variable defaults as fallback
-					defaults = {
-						orgCode: process.env.DEFAULT_ORGANISATION_CODE || 'default_code',
-						tenantCode: process.env.DEFAULT_TENANT_CODE || 'default',
-					}
-				}
-
-				if (!defaults || !defaults.orgCode) {
-					// Update file upload status to FAILED before throwing error
-					try {
-						await fileUploadQueries.update({ id: data.fileDetails.id }, data.user.tenant_code, {
-							status: common.STATUS.FAILED,
-							updated_by: data.user.userId,
-						})
-					} catch (dbError) {
-						console.error('Failed to update file upload status:', dbError)
-					}
-					throw new Error('DEFAULT_ORG_CODE_NOT_SET')
-				}
-				if (!defaults.tenantCode) {
-					// Update file upload status to FAILED before throwing error
-					try {
-						await fileUploadQueries.update({ id: data.fileDetails.id }, data.user.tenant_code, {
-							status: common.STATUS.FAILED,
-							updated_by: data.user.userId,
-						})
-					} catch (dbError) {
-						console.error('Failed to update file upload status:', dbError)
-					}
-					throw new Error('DEFAULT_TENANT_CODE_NOT_SET')
-				}
-
 				const filePath = data.fileDetails.input_path
 				const userId = data.user.userId
 				const orgId = data.user.organization_id
@@ -73,8 +35,6 @@ module.exports = class UserInviteHelper {
 				const notifyUser = true
 				const tenantCode = data.user.tenant_code
 				const orgCode = String(data.user.organization_code)
-				const defaultOrgCode = data.user.defaultOrganiztionCode
-				const defaultTenantCode = data.user.defaultTenantCode
 
 				// Try to get user from both mentee and mentor caches
 				let user = await cacheHelper.mentee.get(tenantCode, userId)
@@ -96,24 +56,8 @@ module.exports = class UserInviteHelper {
 						tenantCode
 					)
 
-					// If still no email, check email field specifically
-					if (!userWithEmail?.email) {
-						// Try to get email using a direct query
-						try {
-							const directEmailQuery = await userQueries.getUsersByUserIds(
-								[userId],
-								{ attributes: ['user_id', 'name', 'email'] },
-								tenantCode,
-								false
-							)
-							if (directEmailQuery && directEmailQuery.length > 0 && directEmailQuery[0].email) {
-								userWithEmail = { ...userWithEmail, email: directEmailQuery[0].email }
-							}
-						} catch (emailQueryError) {
-							console.log(`Email query error: ${emailQueryError.message}`)
-						}
-					} else {
-						// Update the user object with email for later use
+					// Update the user object with email for later use if found
+					if (userWithEmail?.email) {
 						user.email = userWithEmail.email
 					}
 				}
@@ -142,9 +86,7 @@ module.exports = class UserInviteHelper {
 					notifyUser,
 					isMentor,
 					tenantCode,
-					orgCode,
-					defaultOrgCode,
-					defaultTenantCode
+					orgCode
 				)
 
 				if (createResponse.success == false) {
@@ -189,8 +131,6 @@ module.exports = class UserInviteHelper {
 				// send email to admin
 				const templateCode = process.env.SESSION_UPLOAD_EMAIL_TEMPLATE_CODE
 				if (templateCode) {
-					// defaults already validated at the beginning of the method
-
 					// send mail to mentors on session creation if session created by manager
 					const templateData = await cacheHelper.notificationTemplates.get(
 						tenantCode,
@@ -679,21 +619,13 @@ module.exports = class UserInviteHelper {
 
 			const sessionModelName = await sessionQueries.getModelName()
 
-			const defaults = await getDefaults()
-			if (!defaults.orgCode) {
-				session.status = 'Invalid'
-				session.statusMessage = this.appendWithComma(session.statusMessage, 'DEFAULT_ORG_CODE_NOT_SET')
-			}
-			if (!defaults.tenantCode) {
-				session.status = 'Invalid'
-				session.statusMessage = this.appendWithComma(session.statusMessage, 'DEFAULT_TENANT_CODE_NOT_SET')
-			}
-
+			// Get entity types (entityTypeCache already handles user org + default org merging)
 			let entityTypes = await entityTypeCache.getEntityTypesAndEntitiesForModel(
 				sessionModelName,
 				tenantCode,
 				orgCode
 			)
+
 			const idAndValues = entityTypes.map((item) => ({
 				value: item.value,
 				entities: item.entities,
@@ -838,9 +770,7 @@ module.exports = class UserInviteHelper {
 		notifyUser,
 		isMentor,
 		tenantCode,
-		orgCode,
-		defaultOrgCode,
-		defaultTenantCode
+		orgCode
 	) {
 		try {
 			const outputFileName = utils.generateFileName(common.sessionOutputFile, common.csvExtension)
@@ -944,11 +874,13 @@ module.exports = class UserInviteHelper {
 
 			const sessionModelName = await sessionQueries.getModelName()
 
+			// Get entity types (entityTypeCache already handles user org + default org merging)
 			let entityTypes = await entityTypeCache.getEntityTypesAndEntitiesForModel(
 				sessionModelName,
 				tenantCode,
 				orgCode
 			)
+
 			const idAndValues = entityTypes.map((item) => ({
 				value: item.value,
 				entities: item.entities,
@@ -1183,19 +1115,26 @@ module.exports = class UserInviteHelper {
 		for (const item of sessionCreationOutput) {
 			const mentorIdPromise = item.mentor_id
 			if (!isNaN(mentorIdPromise) && mentorIdPromise) {
-				const mentorId = await menteeExtensionQueries.getMenteeExtension(
-					mentorIdPromise,
-					['email'],
-					false,
-					tenantCode
-				)
-				if (!mentorId) {
-					// Mark item as invalid instead of throwing error
+				try {
+					const mentorId = await menteeExtensionQueries.getMenteeExtension(
+						mentorIdPromise,
+						['email'],
+						false,
+						tenantCode
+					)
+					if (!mentorId) {
+						// Mark item as invalid instead of throwing error
+						item.status = 'Invalid'
+						item.statusMessage = this.appendWithComma(item.statusMessage, 'Mentor not found')
+						item.mentor_id = mentorIdPromise // Keep original ID for reference
+					} else {
+						item.mentor_id = mentorId.email
+					}
+				} catch (dbError) {
+					// Handle database errors gracefully
 					item.status = 'Invalid'
 					item.statusMessage = this.appendWithComma(item.statusMessage, 'Mentor not found')
 					item.mentor_id = mentorIdPromise // Keep original ID for reference
-				} else {
-					item.mentor_id = mentorId.email
 				}
 			} else {
 				item.mentor_id = item.mentor_id

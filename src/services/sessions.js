@@ -2237,8 +2237,8 @@ module.exports = class SessionsHelper {
 				// Cache invalidation failure - continue operation
 			}
 
-			// Clear user cache since sessions_attended count changed - only if user is not the session creator
-			if (session.created_by !== userId) {
+			// Clear user cache since sessions_attended count changed - only if enrollment was actually created
+			if (enrollmentResult.created) {
 				await this._clearUserCache(userId, tenantCode)
 			}
 
@@ -2384,8 +2384,8 @@ module.exports = class SessionsHelper {
 				// Cache invalidation failure - continue operation
 			}
 
-			// Clear user cache since sessions_attended count changed - only if user is not the session creator
-			if (session.created_by !== userId) {
+			// Clear user cache since sessions_attended count changed - only if unenrollment actually occurred
+			if (deletedRows > 0) {
 				await this._clearUserCache(userId, tenantCode)
 			}
 
