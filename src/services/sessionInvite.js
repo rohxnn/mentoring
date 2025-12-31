@@ -21,7 +21,6 @@ const inviteeFileDir = ProjectRootDir + common.tempFolderForBulkUpload
 const menteeExtensionQueries = require('@database/queries/userExtension')
 const uploadToCloud = require('@helpers/uploadFileToCloud')
 const cacheHelper = require('@generics/cacheHelper')
-const responses = require('@helpers/responses')
 
 module.exports = class UserInviteHelper {
 	static async uploadSession(data) {
@@ -30,6 +29,43 @@ module.exports = class UserInviteHelper {
 			const jobId = `${data.fileDetails.id}_${startTime}`
 
 			try {
+				// Validate defaults early before processing begins
+				let defaults = null
+				try {
+					defaults = await getDefaults()
+				} catch (defaultsError) {
+					// Use environment variable defaults as fallback
+					defaults = {
+						orgCode: process.env.DEFAULT_ORGANISATION_CODE || 'default_code',
+						tenantCode: process.env.DEFAULT_TENANT_CODE || 'default',
+					}
+				}
+
+				if (!defaults || !defaults.orgCode) {
+					// Update file upload status to FAILED before throwing error
+					try {
+						await fileUploadQueries.update({ id: data.fileDetails.id }, data.user.tenant_code, {
+							status: common.STATUS.FAILED,
+							updated_by: data.user.userId,
+						})
+					} catch (dbError) {
+						console.error('Failed to update file upload status:', dbError)
+					}
+					throw new Error('DEFAULT_ORG_CODE_NOT_SET')
+				}
+				if (!defaults.tenantCode) {
+					// Update file upload status to FAILED before throwing error
+					try {
+						await fileUploadQueries.update({ id: data.fileDetails.id }, data.user.tenant_code, {
+							status: common.STATUS.FAILED,
+							updated_by: data.user.userId,
+						})
+					} catch (dbError) {
+						console.error('Failed to update file upload status:', dbError)
+					}
+					throw new Error('DEFAULT_TENANT_CODE_NOT_SET')
+				}
+
 				const filePath = data.fileDetails.input_path
 				const userId = data.user.userId
 				const orgId = data.user.organization_id
@@ -40,18 +76,20 @@ module.exports = class UserInviteHelper {
 				const defaultOrgCode = data.user.defaultOrganiztionCode
 				const defaultTenantCode = data.user.defaultTenantCode
 
-				const mentor = await cacheHelper.mentee.get(tenantCode, userId)
-				if (!mentor) {
+				// Try to get user from both mentee and mentor caches
+				let user = await cacheHelper.mentee.get(tenantCode, userId)
+				if (!user) {
+					user = await cacheHelper.mentor.get(tenantCode, userId)
+				}
+				if (!user) {
 					throw new Error('USER_NOT_FOUND')
 				}
 
 				// If email is missing from cache, get fresh user data with email from database
-				let userWithEmail = mentor
-				if (!mentor.email) {
-					const userQueries = require('@database/queries/userExtension')
-
+				let userWithEmail = user
+				if (!user.email) {
 					// Explicitly request email field and don't use cache
-					userWithEmail = await userQueries.getMenteeExtension(
+					userWithEmail = await menteeExtensionQueries.getMenteeExtension(
 						userId,
 						['user_id', 'name', 'email', 'is_mentor', 'organization_code', 'tenant_code'],
 						false,
@@ -75,12 +113,12 @@ module.exports = class UserInviteHelper {
 							console.log(`Email query error: ${emailQueryError.message}`)
 						}
 					} else {
-						// Update the mentor object with email for later use
-						mentor.email = userWithEmail.email
+						// Update the user object with email for later use
+						user.email = userWithEmail.email
 					}
 				}
 
-				const isMentor = mentor.is_mentor
+				const isMentor = user.is_mentor
 
 				// download file to local directory
 				const response = await this.downloadCSV(filePath)
@@ -151,23 +189,7 @@ module.exports = class UserInviteHelper {
 				// send email to admin
 				const templateCode = process.env.SESSION_UPLOAD_EMAIL_TEMPLATE_CODE
 				if (templateCode) {
-					let defaults = null
-					try {
-						defaults = await getDefaults()
-					} catch (defaultsError) {
-						// Use environment variable defaults as fallback
-						defaults = {
-							orgCode: process.env.DEFAULT_ORGANISATION_CODE || 'default_code',
-							tenantCode: process.env.DEFAULT_TENANT_CODE || 'default',
-						}
-					}
-
-					if (!defaults || !defaults.orgCode) {
-						throw new Error('DEFAULT_ORG_CODE_NOT_SET')
-					}
-					if (!defaults.tenantCode) {
-						throw new Error('DEFAULT_TENANT_CODE_NOT_SET')
-					}
+					// defaults already validated at the beginning of the method
 
 					// send mail to mentors on session creation if session created by manager
 					const templateData = await cacheHelper.notificationTemplates.get(
@@ -178,13 +200,13 @@ module.exports = class UserInviteHelper {
 
 					if (templateData) {
 						// Use the email we retrieved earlier, fallback to data.user.email
-						const emailToUse = userWithEmail?.email || mentor?.email || data.user.email
+						const emailToUse = userWithEmail?.email || user?.email || data.user.email
 
 						// Prepare user data with correct email
 						const userDataForEmail = {
 							...data.user,
 							email: emailToUse,
-							name: userWithEmail?.name || mentor?.name || data.user.name,
+							name: userWithEmail?.name || user?.name || data.user.name,
 						}
 
 						const sessionUploadURL = await utils.getDownloadableUrl(output_path)
@@ -1167,8 +1189,14 @@ module.exports = class UserInviteHelper {
 					false,
 					tenantCode
 				)
-				if (!mentorId) throw new Error('USER_NOT_FOUND')
-				item.mentor_id = mentorId.email
+				if (!mentorId) {
+					// Mark item as invalid instead of throwing error
+					item.status = 'Invalid'
+					item.statusMessage = this.appendWithComma(item.statusMessage, 'Mentor not found')
+					item.mentor_id = mentorIdPromise // Keep original ID for reference
+				} else {
+					item.mentor_id = mentorId.email
+				}
 			} else {
 				item.mentor_id = item.mentor_id
 			}
@@ -1184,8 +1212,16 @@ module.exports = class UserInviteHelper {
 							false,
 							tenantCode
 						)
-						if (!mentee) throw new Error('USER_NOT_FOUND')
-						menteeEmails.push(mentee.email)
+						if (!mentee) {
+							// Skip missing mentee and continue processing the rest
+							console.warn(
+								`Mentee with ID ${menteeId} not found, skipping from session ${
+									item.id || 'new session'
+								}`
+							)
+						} else {
+							menteeEmails.push(mentee.email)
+						}
 					} else {
 						menteeEmails.push(menteeId)
 					}
