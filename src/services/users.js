@@ -121,16 +121,41 @@ module.exports = class UserHelper {
 	}
 
 	static async add(bodyData, userId, organizationId, tenantCode) {
+		console.log('🏗️ [USER SERVICE] ===== ACCOUNT CREATION STARTING =====')
+		console.log('🏗️ [USER SERVICE] Input parameters:')
+		console.log('🏗️ [USER SERVICE]   - bodyData keys:', Object.keys(bodyData))
+		console.log('🏗️ [USER SERVICE]   - bodyData.id:', bodyData.id, 'Type:', typeof bodyData.id)
+		console.log('🏗️ [USER SERVICE]   - userId:', userId)
+		console.log('🏗️ [USER SERVICE]   - organizationId:', organizationId)
+		console.log('🏗️ [USER SERVICE]   - tenantCode:', tenantCode)
+		console.log('🏗️ [USER SERVICE] Full bodyData:', JSON.stringify(bodyData, null, 2))
+
 		bodyData.id = bodyData.id.toString()
+		console.log('🏗️ [USER SERVICE] After ID conversion:', bodyData.id, 'Type:', typeof bodyData.id)
+
 		let result = {}
+		console.log('🏗️ [USER SERVICE] Checking user existence...')
 		const isNewUser = await this.#checkUserExistence(bodyData.id, tenantCode)
+		console.log('🏗️ [USER SERVICE] User existence check result: isNewUser =', isNewUser)
+
 		if (isNewUser) {
+			console.log('🏗️ [USER SERVICE] Creating NEW user with body data...')
 			result = await this.#createUserWithBody(bodyData, tenantCode)
+			console.log('🏗️ [USER SERVICE] New user creation result:', JSON.stringify(result, null, 2))
 		} else {
+			console.log('🏗️ [USER SERVICE] Updating EXISTING user...')
 			bodyData.new_roles = bodyData.newValues?.organizations?.[0]?.roles ?? []
+			console.log('🏗️ [USER SERVICE] New roles extracted:', bodyData.new_roles)
 			const targetHasMentorRole = bodyData.new_roles.some((role) => role.title === common.MENTOR_ROLE)
+			console.log('🏗️ [USER SERVICE] Target has mentor role:', targetHasMentorRole)
 			result = await this.#createOrUpdateUserAndOrg(bodyData.id, isNewUser, targetHasMentorRole)
+			console.log('🏗️ [USER SERVICE] Existing user update result:', JSON.stringify(result, null, 2))
 		}
+
+		console.log('🏗️ [USER SERVICE] ===== ACCOUNT CREATION COMPLETED =====')
+		console.log('🏗️ [USER SERVICE] Final result status:', result?.statusCode || 'NO_STATUS')
+		console.log('🏗️ [USER SERVICE] Final result message:', result?.message || 'NO_MESSAGE')
+
 		return result
 	}
 
