@@ -3,11 +3,6 @@
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
 	async up(queryInterface, Sequelize) {
-		const defaultOrgId = queryInterface.sequelize.options.defaultOrgId
-
-		if (!defaultOrgId) {
-			throw new Error('Default org ID is undefined. Please make sure it is set in sequelize options.')
-		}
 		await queryInterface.sequelize.transaction(async (transaction) => {
 			await queryInterface.bulkUpdate(
 				'report_queries',
