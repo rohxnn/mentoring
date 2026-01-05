@@ -64,9 +64,6 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 					organizationInfo.push(orgExtension)
 					tenantCodes.push(orgExtension.tenant_code)
 				} else if (visibilityPolicy === common.ASSOCIATED || visibilityPolicy === common.ALL) {
-					organizationCodes.push(orgExtension.organization_code)
-					organizationInfo.push(orgExtension)
-					tenantCodes.push(orgExtension.tenant_code)
 					let relatedOrgs = []
 					let userOrgDetails = await userRequests.fetchOrgDetails({
 						organizationCode: orgExtension.organization_code,
@@ -106,8 +103,8 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 									},
 									associatedAdditionalFilter,
 								],
+								tenant_code: tenantCode,
 							},
-							tenantCode,
 							{
 								attributes: ['organization_id', 'organization_code', 'tenant_code', 'name'],
 							}
@@ -117,6 +114,7 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 							const organizationCodesFromOrgExtension = organizationExtension.map(
 								(orgExt) => orgExt.organization_code
 							)
+
 							const tenantCodesFromOrgExtension = organizationExtension.map(
 								(orgExt) => orgExt.tenant_code
 							)
@@ -184,8 +182,8 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 										],
 									},
 								],
+								tenant_code: tenantCode,
 							},
-							tenantCode,
 							{
 								attributes: ['organization_id', 'organization_code', 'tenant_code', 'name'],
 							}
@@ -195,7 +193,6 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 							const organizationCodesFromOrgExtension = organizationExtension.map(
 								(orgExt) => orgExt.organization_code
 							)
-							organizationCodes.push(...organizationCodesFromOrgExtension)
 
 							const tenantCodesFromOrgExtension = organizationExtension.map(
 								(orgExt) => orgExt.tenant_code

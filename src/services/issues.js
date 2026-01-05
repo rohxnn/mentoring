@@ -66,7 +66,7 @@ module.exports = class issuesHelper {
 				})
 			}
 
-			const orgCode = [decodedToken.organization_code]
+			const orgCode = decodedToken.organization_code
 
 			// Get email template with cache-first approach and database fallback
 

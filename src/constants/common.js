@@ -132,7 +132,7 @@ module.exports = {
 	GET_METHOD: 'GET',
 	POST_METHOD: 'POST',
 	excludedQueryParams: ['enrolled'],
-	materializedViewsPrefix: 'm_',
+	materializedViewsPrefix: '_m_',
 	mentorExtensionModelName: 'MentorExtension',
 	userExtensionModelName: 'UserExtension',
 	sessionModelName: 'Session',

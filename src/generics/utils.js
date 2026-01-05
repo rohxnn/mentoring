@@ -16,6 +16,8 @@ const startCase = require('lodash/startCase')
 const common = require('@constants/common')
 const crypto = require('crypto')
 const _ = require('lodash')
+const { elevateLog } = require('elevate-logger')
+const logger = elevateLog.init()
 
 const hash = (str) => {
 	const salt = bcryptJs.genSaltSync(10)
@@ -643,7 +645,7 @@ function generateCSVContent(data) {
 
 const clearFile = (filePath) => {
 	fs.unlink(filePath, (err) => {
-		if (err) console.error(err)
+		if (err) logger.error(err)
 	})
 }
 function convertKeysToSnakeCase(obj) {
@@ -1261,7 +1263,7 @@ function transformEntityTypes(input) {
  * @returns {String} returns tenant-specific view name.
  */
 const getTenantViewName = (tenantCode, tableName) => {
-	return `${tenantCode}_m_${tableName}`
+	return `${tenantCode}${common.materializedViewsPrefix}${tableName}`
 }
 
 function sortData(data = [], path = 'meta.sequence') {
