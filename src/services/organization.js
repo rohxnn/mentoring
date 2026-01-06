@@ -81,7 +81,7 @@ module.exports = class OrganizationService {
 				tenant_code: tenantCode,
 			}
 			console.log('EXTENSION DATA BEFORE INSERT: ', extensionData)
-			const orgExtension = await organisationExtensionQueries.upsert(extensionData)
+			const orgExtension = await organisationExtensionQueries.upsert(extensionData, tenantCode)
 			console.log('EXTENSION DATA AFTER INSERT: ', orgExtension)
 
 			// Cache the newly created organization extension
