@@ -320,7 +320,6 @@ module.exports = class SessionsHelper {
 				!userOrgDetails.success ||
 				(userOrgDetails.data && userOrgDetails.data.responseCode === 'UNAUTHORIZED')
 			) {
-				console.log('Skipping organization validation due to permission issue, using local organization data')
 				// Create a mock organization response using the data we have
 				userOrgDetails = {
 					success: true,

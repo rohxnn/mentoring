@@ -186,7 +186,6 @@ module.exports = class requestSessionsHelper {
 				result: SessionRequestResult,
 			})
 		} catch (error) {
-			console.error(error)
 			throw error
 		}
 	}
@@ -316,7 +315,6 @@ module.exports = class requestSessionsHelper {
 				},
 			})
 		} catch (error) {
-			console.error(error)
 			throw error
 		}
 	}
@@ -536,7 +534,6 @@ module.exports = class requestSessionsHelper {
 					: undefined,
 			})
 		} catch (error) {
-			console.error(error)
 			throw error
 		}
 	}
@@ -611,7 +608,6 @@ module.exports = class requestSessionsHelper {
 				message: 'SESSION_REQUEST_REJECTED',
 			})
 		} catch (error) {
-			console.error(error)
 			throw error
 		}
 	}
@@ -706,7 +702,6 @@ module.exports = class requestSessionsHelper {
 				result: requestSessions,
 			})
 		} catch (error) {
-			console.error(error)
 			throw error
 		}
 	}
@@ -786,7 +781,6 @@ module.exports = class requestSessionsHelper {
 				message: 'SESSION_REQUEST_EXPIRED',
 			})
 		} catch (error) {
-			console.error(error)
 			throw error
 		}
 	}
