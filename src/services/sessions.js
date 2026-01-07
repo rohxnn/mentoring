@@ -525,7 +525,11 @@ module.exports = class SessionsHelper {
 					emailTemplateCode = process.env.MENTOR_PUBLIC_SESSION_INVITE_BY_MANAGER_EMAIL_TEMPLATE
 				}
 				// send mail to mentors on session creation if session created by manager
-				const templateData = await cacheHelper.notificationTemplates.get(tenantCode, orgCode, emailTemplateCode)
+				const templateData = await notificationQueries.findOneEmailTemplate(
+					emailTemplateCode,
+					{ [Op.in]: [orgCode, defaults.orgCode] },
+					{ [Op.in]: [tenantCode, defaults.tenantCode] }
+				)
 
 				// If template data is available. create mail data and push to kafka
 				if (templateData) {
@@ -1088,60 +1092,55 @@ module.exports = class SessionsHelper {
 					// isSessionCreatedByManager
 					// 	? (sessionDeleteEmailTemplate = process.env.MENTOR_SESSION_DELETE_BY_MANAGER_EMAIL_TEMPLATE)
 					// 	: (sessionDeleteEmailTemplate = process.env.MENTOR_SESSION_DELETE_EMAIL_TEMPLATE)
-
-					templateData = await cacheHelper.notificationTemplates.get(
-						tenantCode,
-						orgCode,
-						sessionDeleteEmailTemplate
+					templateData = await notificationQueries.findOneEmailTemplate(
+						sessionDeleteEmailTemplate,
+						{ [Op.in]: [orgCode, defaults.orgCode] },
+						{ [Op.in]: [tenantCode, defaults.tenantCode] }
 					)
-
 					mentorEmailTemplate = sessionDeleteEmailTemplate
 				} else if (isSessionReschedule && !isSessionCreatedByManager) {
-					templateData = await cacheHelper.notificationTemplates.get(
-						tenantCode,
-						orgCode,
-						process.env.MENTOR_SESSION_RESCHEDULE_EMAIL_TEMPLATE
+					templateData = await notificationQueries.findOneEmailTemplate(
+						process.env.MENTOR_SESSION_RESCHEDULE_EMAIL_TEMPLATE,
+						{ [Op.in]: [orgCode, defaults.orgCode] },
+						{ [Op.in]: [tenantCode, defaults.tenantCode] }
 					)
 				} else if (isSessionDataChanged && notifyUser) {
 					// session is edited by the manager
 					// if only title is changed. then a different email has to send to mentor and mentees
 					let sessionUpdateByMangerTemplate = process.env.MENTEE_SESSION_EDITED_BY_MANAGER_EMAIL_TEMPLATE
 					// This is the template used to send email to session mentees when it is edited
-					templateData = await cacheHelper.notificationTemplates.get(
-						tenantCode,
-						orgCode,
-						sessionUpdateByMangerTemplate
+					templateData = await notificationQueries.findOneEmailTemplate(
+						sessionUpdateByMangerTemplate,
+						{ [Op.in]: [orgCode, defaults.orgCode] },
+						{ [Op.in]: [tenantCode, defaults.tenantCode] }
 					)
-
 					// This is the email template code we have to use to send email to mentor of a session
 					mentorEmailTemplate = process.env.MENTOR_SESSION_EDITED_BY_MANAGER_EMAIL_TEMPLATE
 				}
 
 				if (preResourceSendEmail) {
 					let preResourceTemplate = process.env.PRE_RESOURCE_EMAIL_TEMPLATE_CODE
-
-					preOrPostEmailTemplate = await cacheHelper.notificationTemplates.get(
-						tenantCode,
-						orgCode,
-						preResourceTemplate
+					preOrPostEmailTemplate = await notificationQueries.findOneEmailTemplate(
+						preResourceTemplate,
+						{ [Op.in]: [orgCode, defaults.orgCode] },
+						{ [Op.in]: [tenantCode, defaults.tenantCode] }
 					)
 				}
 				if (postResourceSendEmail) {
 					let postResourceTemplate = process.env.POST_RESOURCE_EMAIL_TEMPLATE_CODE
-
-					preOrPostEmailTemplate = await cacheHelper.notificationTemplates.get(
-						tenantCode,
-						orgCode,
-						postResourceTemplate
+					preOrPostEmailTemplate = await notificationQueries.findOneEmailTemplate(
+						postResourceTemplate,
+						{ [Op.in]: [orgCode, defaults.orgCode] },
+						{ [Op.in]: [tenantCode, defaults.tenantCode] }
 					)
 				}
 
 				if (mentorUpdated) {
 					let mentorChangedTemplateName = process.env.SESSION_MENTOR_CHANGED_EMAIL_TEMPLATE
-					mentorChangedTemplate = await cacheHelper.notificationTemplates.get(
-						tenantCode,
-						orgCode,
-						mentorChangedTemplateName
+					mentorChangedTemplate = await notificationQueries.findOneEmailTemplate(
+						mentorChangedTemplateName,
+						{ [Op.in]: [orgCode, defaults.orgCode] },
+						{ [Op.in]: [tenantCode, defaults.tenantCode] }
 					)
 				}
 
@@ -3592,8 +3591,11 @@ module.exports = class SessionsHelper {
 				)
 				oldSessionDuration = duration.asMinutes()
 			}
-
-			const templateData = await cacheHelper.notificationTemplates.get(tenantCode, orgCode, templateCode)
+			const templateData = await notificationQueries.findOneEmailTemplate(
+				templateCode,
+				{ [Op.in]: [orgCode, defaults.orgCode] },
+				{ [Op.in]: [tenantCode, defaults.tenantCode] }
+			)
 
 			// Construct data
 			const payload = {
