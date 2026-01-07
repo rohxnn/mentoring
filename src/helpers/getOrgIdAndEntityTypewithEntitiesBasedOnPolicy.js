@@ -9,6 +9,7 @@ const { Op } = require('sequelize')
 module.exports = class OrganizationAndEntityTypePolicyHelper {
 	static async getOrganizationIdBasedOnPolicy(userId, organization_code, filterType, tenantCode) {
 		try {
+			let organizationInfo = []
 			let organizationCodes = []
 			let tenantCodes = []
 			filterType = filterType.toLowerCase()
@@ -22,18 +23,21 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 					'external_mentee_visibility_policy',
 					'organization_code',
 					'tenant_code',
+					'name',
 				],
 				[common.SESSION]: [
 					'organization_id',
 					'external_session_visibility_policy',
 					'organization_code',
 					'tenant_code',
+					'name',
 				],
 				[common.MENTOR_ROLE]: [
 					'organization_id',
 					'external_mentor_visibility_policy',
 					'organization_code',
 					'tenant_code',
+					'name',
 				],
 			}
 			visibilityPolicies = policyMap[filterType] || []
@@ -57,10 +61,9 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 				const visibilityPolicy = orgVisibilityPolicies
 				if (visibilityPolicy === common.CURRENT) {
 					organizationCodes.push(orgExtension.organization_code)
+					organizationInfo.push(orgExtension)
 					tenantCodes.push(orgExtension.tenant_code)
 				} else if (visibilityPolicy === common.ASSOCIATED || visibilityPolicy === common.ALL) {
-					organizationCodes.push(orgExtension.organization_code)
-					tenantCodes.push(orgExtension.tenant_code)
 					let relatedOrgs = []
 					let userOrgDetails = await userRequests.fetchOrgDetails({
 						organizationCode: orgExtension.organization_code,
@@ -100,10 +103,10 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 									},
 									associatedAdditionalFilter,
 								],
+								tenant_code: tenantCode,
 							},
-							tenantCode,
 							{
-								attributes: ['organization_id', 'organization_code', 'tenant_code'],
+								attributes: ['organization_id', 'organization_code', 'tenant_code', 'name'],
 							}
 						)
 
@@ -111,9 +114,12 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 							const organizationCodesFromOrgExtension = organizationExtension.map(
 								(orgExt) => orgExt.organization_code
 							)
+
 							const tenantCodesFromOrgExtension = organizationExtension.map(
 								(orgExt) => orgExt.tenant_code
 							)
+
+							organizationInfo.push(...organizationExtension)
 							organizationCodes.push(...organizationCodesFromOrgExtension)
 							tenantCodes.push(...tenantCodesFromOrgExtension)
 						}
@@ -176,10 +182,10 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 										],
 									},
 								],
+								tenant_code: tenantCode,
 							},
-							tenantCode,
 							{
-								attributes: ['organization_id', 'organization_code', 'tenant_code'],
+								attributes: ['organization_id', 'organization_code', 'tenant_code', 'name'],
 							}
 						)
 
@@ -187,11 +193,12 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 							const organizationCodesFromOrgExtension = organizationExtension.map(
 								(orgExt) => orgExt.organization_code
 							)
-							organizationCodes.push(...organizationCodesFromOrgExtension)
 
 							const tenantCodesFromOrgExtension = organizationExtension.map(
 								(orgExt) => orgExt.tenant_code
 							)
+
+							organizationInfo.push(...organizationExtension)
 							organizationCodes.push(...organizationCodesFromOrgExtension)
 							tenantCodes.push(...tenantCodesFromOrgExtension)
 						}
@@ -201,7 +208,7 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 
 			return {
 				success: true,
-				result: { organizationCodes: organizationCodes, tenantCodes: tenantCodes },
+				result: { organizationCodes: organizationCodes, tenantCodes: tenantCodes, organizationInfo },
 			}
 		} catch (error) {
 			return {

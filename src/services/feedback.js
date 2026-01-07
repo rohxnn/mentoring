@@ -419,7 +419,7 @@ const getFeedbackQuestions = async function (formCode, tenantCode) {
 
 const ratingCalculation = async function (ratingData, mentor_id, tenantCode, orgCode) {
 	try {
-		let mentorDetails = await cacheHelper.mentor.get(tenantCode, orgCode, mentor_id)
+		let mentorDetails = await cacheHelper.mentor.get(tenantCode, mentor_id)
 		let mentorRating = mentorDetails.rating
 		let updateData
 
@@ -479,7 +479,7 @@ const ratingCalculation = async function (ratingData, mentor_id, tenantCode, org
 
 		// Invalidate mentor profile cache after rating update
 		try {
-			await cacheHelper.mentor.delete(tenantCode, mentorDetails.organization_code, mentor_id)
+			await cacheHelper.mentor.delete(tenantCode, mentor_id)
 		} catch (cacheError) {
 			console.error(`❌ Failed to invalidate mentor cache after rating update:`, cacheError)
 		}

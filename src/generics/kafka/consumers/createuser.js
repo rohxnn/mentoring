@@ -5,11 +5,7 @@ var messageReceived = function (message) {
 		try {
 			const org = message.organizations?.[0]
 			if (!org) {
-				console.log(`Create event missing organizations[0]; skipping`, {
-					topic,
-					partition,
-					offset: message?.offset,
-				})
+				console.log(`org id is missing in create user event handling`)
 				return
 			}
 			message.organization_id = org.id

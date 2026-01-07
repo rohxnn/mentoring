@@ -22,6 +22,7 @@ const organisationExtensionQueries = require('@database/queries/organisationExte
 // Removed cacheHelper to break circular dependency with getDefaultOrgId
 
 const emailEncryption = require('@utils/emailEncryption')
+const _ = require('lodash')
 
 /**
  * @method fetchOrgDetails
@@ -671,98 +672,10 @@ const listOrganization = function (organizationIds = []) {
 				if (err) {
 					result.success = false
 				} else {
-					response = JSON.parse(data.body)
-					result.data = response
+					result.data = JSON.parse(data.body)
 				}
 				return resolve(result)
 			}
-		} catch (error) {
-			return reject(error)
-		}
-	})
-}
-
-/**
- * @method organizationList
- * @description Fetches organization details based on provided organization IDs, either from the database or an external API.
- *
- * This function retrieves details of organizations by their IDs from the db
- *
- * @param {Array<string>} organizationIds - An array of organization IDs to fetch details for.
- * @returns {Promise<object>} - A promise that resolves to an object containing the organization details.
- *
- * @example
- * const organizationIds = ['org1', 'org2'];
- * organizationList(organizationIds)
-
-
- */
-
-const organizationList = function (organizationCodes = [], tenantCodes = []) {
-	return new Promise(async (resolve, reject) => {
-		try {
-			// Try to get cached organizations first
-			const cachedOrgs = []
-			const missingOrgCodes = []
-
-			// Check cache for each org code and tenant code combination
-			for (const orgCode of organizationCodes) {
-				for (const tenantCode of tenantCodes) {
-					let foundInCache = false
-					try {
-						// We need organizationId to get from cache, but we only have orgCode
-						// So we'll fetch from database and cache the results
-						foundInCache = false
-					} catch (cacheError) {
-						foundInCache = false
-					}
-
-					if (!foundInCache) {
-						missingOrgCodes.push({ orgCode, tenantCode })
-					}
-				}
-			}
-
-			// Fetch organization details from database
-			const filter = {
-				organization_code: {
-					[Op.in]: Array.from(organizationCodes),
-				},
-				tenant_code: {
-					[Op.in]: Array.from(tenantCodes),
-				},
-			}
-
-			const organizationDetails = await organisationExtensionQueries.findAll(filter, {
-				attributes: ['name', 'organization_id', 'organization_code', 'tenant_code'],
-			})
-
-			// Cache the fetched organizations for future use
-			if (organizationDetails && organizationDetails.length > 0) {
-				const cachePromises = []
-
-				organizationDetails.forEach((orgInfo) => {
-					orgInfo.id = orgInfo.organization_code
-
-					// Organization caching removed to break circular dependency
-				})
-
-				try {
-					await Promise.all(cachePromises)
-					console.log(`💾 Cached ${organizationDetails.length} organizations from organizationList`)
-				} catch (cacheError) {
-					console.error(`❌ Some organizations failed to cache in organizationList:`, cacheError)
-				}
-			}
-
-			return resolve({
-				responseCode: httpStatusCode.ok,
-				message: 'ORGANIZATION_FETCHED_SUCCESSFULLY',
-				success: true,
-				data: {
-					result: organizationDetails,
-				},
-			})
 		} catch (error) {
 			return reject(error)
 		}
@@ -868,9 +781,10 @@ const getUserDetailedList = function (userIds, tenantCode, deletedUsers = false,
 				organization_id: {
 					[Op.in]: Array.from(organizationIds),
 				},
+				tenant_code: tenantCode,
 			}
 
-			const organizationDetails = await organisationExtensionQueries.findAll(filter, tenantCode, {
+			const organizationDetails = await organisationExtensionQueries.findAll(filter, {
 				attributes: ['name', 'organization_id', 'organization_code'],
 			})
 
@@ -925,22 +839,22 @@ const getUserDetailedList = function (userIds, tenantCode, deletedUsers = false,
 
 			return resolve(response)
 		} catch (error) {
-			return reject(error)
+			throw error(error)
 		}
 	})
 }
 
-const getUserDetailedListUsingCache = async function (usersMap, tenantCode, deletedUsers = false, unscopped = false) {
+const getUserDetailedListUsingCache = async function (userIds, tenantCode, deletedUsers = false, unscopped = false) {
 	try {
 		// Empty input short-circuit
-		if (!usersMap || !Array.isArray(usersMap) || usersMap.length === 0) {
+		if (userIds.length === 0) {
 			return { result: [] }
 		}
 
 		let options = deletedUsers ? { paranoid: false } : {}
 
 		// Get user data: cached + missing list
-		const usersInfo = await usersHelper.getMissingUserIdsAndCacheData(usersMap, tenantCode)
+		const usersInfo = await usersHelper.getMissingUserIdsAndCacheData(userIds, tenantCode)
 
 		let userDetails = [...(usersInfo.cacheFoundData || [])]
 
@@ -997,8 +911,8 @@ const getUserDetailedListUsingCache = async function (usersMap, tenantCode, dele
 				{
 					organization_id: { [Op.in]: missingOrgInfoInCache.map((i) => i.organization_id) },
 					organization_code: { [Op.in]: missingOrgInfoInCache.map((i) => i.organization_code) },
+					tenant_code: tenantCode,
 				},
-				tenantCode,
 				{ attributes: ['name', 'organization_id', 'organization_code'] }
 			)
 
@@ -1126,7 +1040,6 @@ module.exports = {
 	getDownloadableUrl,
 	getUserDetailedList,
 	getUserDetails,
-	organizationList,
 	getOrgDetails,
 	getProfileDetails,
 	getTenantDomain,

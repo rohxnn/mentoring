@@ -90,19 +90,19 @@ module.exports = class UserHelper {
 					{ user_id: decodedToken.id },
 					decodedToken.tenant_code
 				)
-			}
-			if (!menteeExtension) {
-				return responses.failureResponse({
-					statusCode: httpStatusCode.not_found,
-					message: 'USER_NOT_FOUND',
+				if (!menteeExtension) {
+					return responses.failureResponse({
+						statusCode: httpStatusCode.not_found,
+						message: 'USER_NOT_FOUND',
+					})
+				}
+
+				return responses.successResponse({
+					statusCode: httpStatusCode.ok,
+					message: 'USER_DETAILS_FETCHED_SUCCESSFULLY',
+					result: menteeExtension,
 				})
 			}
-
-			return responses.successResponse({
-				statusCode: httpStatusCode.ok,
-				message: 'USER_DETAILS_FETCHED_SUCCESSFULLY',
-				result: menteeExtension,
-			})
 		} catch (error) {
 			throw error
 		}
@@ -190,7 +190,7 @@ module.exports = class UserHelper {
 
 		const orgExtension = await this.#createOrUpdateOrg(
 			{ id: userDetails.data.result.organization.id, code: userDetails.data.result.organization.code },
-			decodedToken.tenant_code
+			userDetails.data.result.tenant_code
 		)
 
 		if (!orgExtension) {
@@ -202,8 +202,8 @@ module.exports = class UserHelper {
 		}
 		const userExtensionData = this.#getExtensionData(userDetails.data.result, orgExtension)
 		const createOrUpdateResult = isNewUser
-			? await this.#createUser(userExtensionData, decodedToken.tenant_code)
-			: await this.#updateUser(userExtensionData, decodedToken)
+			? await this.#createUser(userExtensionData, userDetails.data.result.tenant_code)
+			: await this.#updateUser(userExtensionData, userDetails.data.result.tenant_code, targetHasMentorRole)
 		if (createOrUpdateResult.statusCode != httpStatusCode.ok) return createOrUpdateResult
 		else
 			return responses.successResponse({
@@ -315,7 +315,7 @@ module.exports = class UserHelper {
 
 	static #checkOrgChange = (existingOrgId, newOrgId) => existingOrgId !== newOrgId
 
-	static async #updateUser(userExtensionData, decodedToken) {
+	static async #updateUser(userExtensionData, tenant_code, targetHasMentorRole) {
 		const isAMentee = userExtensionData.roles.some((role) => role.title === common.MENTEE_ROLE)
 		const isAMentor = userExtensionData.roles.some((role) => role.title === common.MENTOR_ROLE)
 		const roleChangePayload = {
@@ -327,7 +327,7 @@ module.exports = class UserHelper {
 		let isRoleChanged = false
 
 		// Skip cache during user updates - role changes require fresh data from database
-		let menteeExtension = await menteeQueries.findOne({ user_id: userExtensionData.id }, decodedToken.tenant_code)
+		let menteeExtension = await menteeQueries.findOne({ user_id: userExtensionData.id }, tenant_code)
 
 		if (!menteeExtension) throw new Error('User Not Found')
 
@@ -351,17 +351,17 @@ module.exports = class UserHelper {
 		if (isRoleChanged) {
 			//If role is changed, the role change, org policy changes for that user
 			//and additional data update of the user is done by orgAdmin's roleChange workflow
-			const roleChangeResult = await orgAdminService.roleChange(roleChangePayload, userExtensionData, tenantCode)
+			const roleChangeResult = await orgAdminService.roleChange(roleChangePayload, userExtensionData, tenant_code)
 
 			// Invalidate cache after role change - separate try-catch for each cache
 			try {
-				await cacheHelper.mentee.delete(tenantCode, userExtensionData.organization.code, userExtensionData.id)
+				await cacheHelper.mentee.delete(tenant_code, userExtensionData.id)
 			} catch (cacheError) {
 				console.error(`❌ Failed to invalidate mentee cache after role change:`, cacheError)
 			}
 
 			try {
-				await cacheHelper.mentor.delete(tenantCode, userExtensionData.organization.code, userExtensionData.id)
+				await cacheHelper.mentor.delete(tenant_code, userExtensionData.id)
 			} catch (cacheError) {
 				console.error(`❌ Failed to invalidate mentor cache after role change:`, cacheError)
 			}
@@ -376,29 +376,21 @@ module.exports = class UserHelper {
 						userExtensionData,
 						userExtensionData.id,
 						userExtensionData.organization.code,
-						decodedToken.tenant_code
+						userExtensionData.tenant_code
 				  )
 				: await mentorsService.updateMentorExtension(
 						userExtensionData,
 						userExtensionData.id,
 						userExtensionData.organization.code,
-						decodedToken.tenant_code
+						userExtensionData.tenant_code
 				  )
 
 			// Invalidate cache after user update
 			try {
 				if (isAMentee) {
-					await cacheHelper.mentee.delete(
-						tenantCode,
-						userExtensionData.organization.code,
-						userExtensionData.id
-					)
+					await cacheHelper.mentee.delete(tenant_code, userExtensionData.id)
 				} else {
-					await cacheHelper.mentor.delete(
-						tenantCode,
-						userExtensionData.organization.code,
-						userExtensionData.id
-					)
+					await cacheHelper.mentor.delete(tenant_code, userExtensionData.id)
 				}
 			} catch (cacheError) {
 				console.error(`❌ Failed to invalidate user cache after update:`, cacheError)
@@ -427,7 +419,7 @@ module.exports = class UserHelper {
 				tenantCode
 			)
 
-			userExists = menteeExtension !== null
+			const userExists = menteeExtension !== null
 			return !userExists // Return true if user does not exist
 		} catch (error) {
 			throw error
@@ -456,7 +448,15 @@ module.exports = class UserHelper {
 		if (!userDetails.data.result) {
 			return 'FAILED_TO_GET_REQUIRED_USER_DETAILS'
 		} else {
-			const requiredFields = ['id', 'user_roles', 'email', 'name', 'organization_code', 'organization_id']
+			const requiredFields = [
+				'id',
+				'user_roles',
+				'email',
+				'name',
+				'organization_code',
+				'organization_id',
+				'tenant_code',
+			]
 			for (const field of requiredFields) {
 				if (!userDetails.data.result[field] || userDetails.data.result[field] == null) {
 					return 'FAILED_TO_GET_REQUIRED_USER_DETAILS'

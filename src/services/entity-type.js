@@ -576,7 +576,7 @@ module.exports = class EntityHelper {
 
 						// Clear mentee caches for all users in organization
 						const menteeClearPromises = menteeUserIds.map((userId) =>
-							cacheHelper.mentee.delete(tenantCode, organizationCode, userId).catch((error) => {
+							cacheHelper.mentee.delete(tenantCode, userId).catch((error) => {
 								/* Failed to clear mentee cache - continue operation */
 							})
 						)
@@ -595,7 +595,7 @@ module.exports = class EntityHelper {
 
 						// Clear mentor caches for all users in organization (users can be both mentee and mentor)
 						const mentorClearPromises = mentorUserIds.map((userId) =>
-							cacheHelper.mentor.delete(tenantCode, organizationCode, userId).catch((error) => {
+							cacheHelper.mentor.delete(tenantCode, userId).catch((error) => {
 								/* Failed to clear mentor cache - continue operation */
 							})
 						)

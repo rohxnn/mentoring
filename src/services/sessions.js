@@ -57,10 +57,9 @@ module.exports = class SessionsHelper {
 	 * @name _clearUserCache
 	 * @param {String|Array} userIds - user ID(s) whose session counts changed
 	 * @param {String} tenantCode - tenant code
-	 * @param {String} orgCode - organization code
 	 * @returns {Promise<void>}
 	 */
-	static async _clearUserCache(userIds, tenantCode, orgCode) {
+	static async _clearUserCache(userIds, tenantCode) {
 		try {
 			// Ensure userIds is an array
 			const userIdArray = Array.isArray(userIds) ? userIds : [userIds]
@@ -75,14 +74,14 @@ module.exports = class SessionsHelper {
 			for (const userId of userIdArray) {
 				// Clear mentee cache
 				clearPromises.push(
-					cacheHelper.mentee.delete(tenantCode, orgCode, userId).catch((error) => {
+					cacheHelper.mentee.delete(tenantCode, userId).catch((error) => {
 						/* Cache invalidation failure - continue operation */
 					})
 				)
 
 				// Clear mentor cache
 				clearPromises.push(
-					cacheHelper.mentor.delete(tenantCode, orgCode, userId).catch((error) => {
+					cacheHelper.mentor.delete(tenantCode, userId).catch((error) => {
 						/* Cache invalidation failure - continue operation */
 					})
 				)
@@ -145,7 +144,7 @@ module.exports = class SessionsHelper {
 			}
 
 			// Try cache first for mentor details, fallback to database if not found
-			let mentorDetails = await cacheHelper.mentor.get(tenantCode, orgCode, mentorIdToCheck)
+			let mentorDetails = await cacheHelper.mentor.get(tenantCode, mentorIdToCheck)
 
 			if (!mentorDetails) {
 				return responses.failureResponse({
@@ -252,7 +251,7 @@ module.exports = class SessionsHelper {
 			}
 
 			// Fetch mentor name from user service to store it in sessions data {for listing purpose}
-			const userDetails = await cacheHelper.mentor.get(tenantCode, orgCode, mentorIdToCheck)
+			const userDetails = await cacheHelper.mentor.get(tenantCode, mentorIdToCheck)
 			if (userDetails && userDetails.name) {
 				bodyData.mentor_name = userDetails.name
 			}
@@ -689,7 +688,7 @@ module.exports = class SessionsHelper {
 			}
 
 			let mentorExtension =
-				(await cacheHelper.mentor.getCacheOnly(tenantCode, orgCode, userId)) ??
+				(await cacheHelper.mentor.getCacheOnly(tenantCode, userId)) ??
 				(await mentorExtensionQueries.getMentorExtension(userId, [], false, tenantCode))
 			if (!mentorExtension) {
 				return responses.failureResponse({
@@ -837,7 +836,7 @@ module.exports = class SessionsHelper {
 					}
 
 					// Clear mentor cache since sessions_hosted count changed (session deleted)
-					await this._clearUserCache(sessionDetail.mentor_id, tenantCode, orgCode)
+					await this._clearUserCache(sessionDetail.mentor_id, tenantCode)
 
 					// Delete scheduled jobs associated with deleted session
 					for (let jobIndex = 0; jobIndex < sessionRelatedJobIds.length; jobIndex++) {
@@ -923,18 +922,14 @@ module.exports = class SessionsHelper {
 					await sessionQueries.addOwnership(sessionId, bodyData.mentor_id)
 					mentorUpdated = true
 					const newMentor =
-						(await cacheHelper.mentor.getCacheOnly(tenantCode, orgCode, bodyData.mentor_id)) ??
+						(await cacheHelper.mentor.getCacheOnly(tenantCode, bodyData.mentor_id)) ??
 						(await mentorExtensionQueries.getMentorExtension(bodyData.mentor_id, ['name'], true))
 					if (newMentor?.name) {
 						bodyData.mentor_name = newMentor.name
 					}
 					this.setMentorPassword(sessionId, bodyData.mentor_id, tenantCode)
 
-					await this._clearUserCache(
-						[sessionDetail.mentor_id, bodyData.mentor_id],
-						tenantCode,
-						sessionDetail.organization_code
-					)
+					await this._clearUserCache([sessionDetail.mentor_id, bodyData.mentor_id], tenantCode)
 				}
 
 				if (sessionDetail.status === common.LIVE_STATUS) {
@@ -1628,7 +1623,7 @@ module.exports = class SessionsHelper {
 			}
 
 			const mentorExtension =
-				(await cacheHelper.mentor.getCacheOnly(tenantCode, orgCode, sessionDetails.mentor_id)) ??
+				(await cacheHelper.mentor.getCacheOnly(tenantCode, sessionDetails.mentor_id)) ??
 				(await mentorExtensionQueries.getMentorExtension(
 					sessionDetails.mentor_id,
 					[
@@ -1669,8 +1664,8 @@ module.exports = class SessionsHelper {
 			let sessionAccessorDetails
 			if (isInvited || sessionDetails.is_assigned || !mentorExtension) {
 				const managerDetails =
-					(await cacheHelper.mentee.getCacheOnly(tenantCode, orgCode, sessionDetails.created_by)) ??
-					(await cacheHelper.mentor.getCacheOnly(tenantCode, orgCode, sessionDetails.created_by)) ??
+					(await cacheHelper.mentee.getCacheOnly(tenantCode, sessionDetails.created_by)) ??
+					(await cacheHelper.mentor.getCacheOnly(tenantCode, sessionDetails.created_by)) ??
 					(await menteeExtensionQueries.getMenteeExtension(
 						sessionDetails.created_by,
 						[
@@ -1854,8 +1849,8 @@ module.exports = class SessionsHelper {
 				userPolicyDetails = policyDetails
 			} else {
 				userPolicyDetails = isAMentor
-					? await cacheHelper.mentor.get(tenantCode, orgCode, userId)
-					: await cacheHelper.mentee.get(tenantCode, orgCode, userId)
+					? await cacheHelper.mentor.get(tenantCode, userId)
+					: await cacheHelper.mentee.get(tenantCode, userId)
 			}
 
 			// Throw error if mentor/mentee extension not found
@@ -2019,16 +2014,8 @@ module.exports = class SessionsHelper {
 			// Else it will be available in userTokenData
 			if (isSelfEnrolled) {
 				const userDetails =
-					(await cacheHelper.mentee.getCacheOnly(
-						tenantCode,
-						orgCode,
-						userTokenData.id || userTokenData.user_id
-					)) ??
-					(await cacheHelper.mentor.getCacheOnly(
-						tenantCode,
-						orgCode,
-						userTokenData.id || userTokenData.user_id
-					)) ??
+					(await cacheHelper.mentee.getCacheOnly(tenantCode, userTokenData.id || userTokenData.user_id)) ??
+					(await cacheHelper.mentor.getCacheOnly(tenantCode, userTokenData.id || userTokenData.user_id)) ??
 					(await mentorExtensionQueries.getMentorExtension(
 						userTokenData.id || userTokenData.user_id,
 						['user_id', 'name', 'email'],
@@ -2117,15 +2104,15 @@ module.exports = class SessionsHelper {
 			) {
 				emailTemplateCode = process.env.MENTEE_PUBLIC_SESSION_ENROLLMENT_BY_MANAGER_EMAIL_TEMPLATE
 				const sessionCreatorName =
-					(await cacheHelper.mentee.getCacheOnly(tenantCode, orgCode, session.created_by)) ??
-					(await cacheHelper.mentor.getCacheOnly(tenantCode, orgCode, session.created_by)) ??
+					(await cacheHelper.mentee.getCacheOnly(tenantCode, session.created_by)) ??
+					(await cacheHelper.mentor.getCacheOnly(tenantCode, session.created_by)) ??
 					(await menteeExtensionQueries.getMenteeExtension(session.created_by, ['name'], true, tenantCode))
 				creatorName = sessionCreatorName.name
 			}
 
 			if (mentorId || session.mentor_id) {
 				const mentorDetails =
-					(await cacheHelper.mentor.getCacheOnly(tenantCode, orgCode, mentorId || session.mentor_id)) ??
+					(await cacheHelper.mentor.getCacheOnly(tenantCode, mentorId || session.mentor_id)) ??
 					(await mentorExtensionQueries.getMentorExtension(
 						mentorId || session.mentor_id,
 						['name'],
@@ -2249,7 +2236,7 @@ module.exports = class SessionsHelper {
 			}
 
 			// Clear user cache since sessions_attended count changed
-			await this._clearUserCache(userId, tenantCode, orgCode)
+			await this._clearUserCache(userId, tenantCode)
 
 			return responses.successResponse({
 				statusCode: httpStatusCode.created,
@@ -2290,8 +2277,8 @@ module.exports = class SessionsHelper {
 			// Else it will be available in userTokenData
 			if (isSelfUnenrollment) {
 				const userDetails =
-					(await cacheHelper.mentee.getCacheOnly(tenantCode, orgCode, userId)) ??
-					(await cacheHelper.mentor.getCacheOnly(tenantCode, orgCode, userId)) ??
+					(await cacheHelper.mentee.getCacheOnly(tenantCode, userId)) ??
+					(await cacheHelper.mentor.getCacheOnly(tenantCode, userId)) ??
 					(await mentorExtensionQueries.getMentorExtension(
 						userId,
 						['user_id', 'name', 'email'],
@@ -2325,7 +2312,7 @@ module.exports = class SessionsHelper {
 			if (mentorId || session.mentor_id) {
 				let mentor_id = mentorId ?? session.mentor_id
 				const mentorDetails =
-					(await cacheHelper.mentor.getCacheOnly(tenantCode, orgCode, mentor_id)) ??
+					(await cacheHelper.mentor.getCacheOnly(tenantCode, mentor_id)) ??
 					(await mentorExtensionQueries.getMentorExtension(mentor_id, ['name'], true, tenantCode))
 				session.mentor_name = mentorDetails.name
 			} else {
@@ -2394,7 +2381,7 @@ module.exports = class SessionsHelper {
 			}
 
 			// Clear user cache since sessions_attended count changed
-			await this._clearUserCache(userId, tenantCode, orgCode)
+			await this._clearUserCache(userId, tenantCode)
 
 			return responses.successResponse({
 				statusCode: httpStatusCode.accepted,
@@ -2529,7 +2516,7 @@ module.exports = class SessionsHelper {
 		const loggedInUserId = userTokenData.id
 		const mentorName = userTokenData.name
 		try {
-			const mentor = await cacheHelper.mentor.get(tenantCode, userTokenData.organization_code, loggedInUserId)
+			const mentor = await cacheHelper.mentor.get(tenantCode, loggedInUserId)
 			if (!mentor) {
 				return responses.failureResponse({
 					message: 'NOT_A_MENTOR',
@@ -2543,13 +2530,11 @@ module.exports = class SessionsHelper {
 				(await sessionQueries.findById(sessionId, tenantCode))
 
 			if (!session) {
-				return resolve(
-					responses.failureResponse({
-						message: 'SESSION_NOT_FOUND',
-						statusCode: httpStatusCode.bad_request,
-						responseCode: 'CLIENT_ERROR',
-					})
-				)
+				return responses.failureResponse({
+					message: 'SESSION_NOT_FOUND',
+					statusCode: httpStatusCode.bad_request,
+					responseCode: 'CLIENT_ERROR',
+				})
 			}
 
 			if (session.mentor_id !== mentor.user_id) {
@@ -3582,7 +3567,7 @@ module.exports = class SessionsHelper {
 			const defaults = await getDefaults()
 
 			const userDetails =
-				(await cacheHelper.mentor.getCacheOnly(tenantCode, orgCode, sessionDetail.mentor_id)) ??
+				(await cacheHelper.mentor.getCacheOnly(tenantCode, sessionDetail.mentor_id)) ??
 				(await mentorExtensionQueries.getMentorExtension(
 					sessionDetail.mentor_id,
 					['name', 'email'],
@@ -3760,7 +3745,7 @@ module.exports = class SessionsHelper {
 
 			// Clear user caches for all successfully removed mentees since sessions_attended count changed
 			if (successIds.length > 0) {
-				await this._clearUserCache(successIds, tenantCode, orgCode)
+				await this._clearUserCache(successIds, tenantCode)
 			}
 
 			return responses.successResponse({
@@ -4148,7 +4133,7 @@ module.exports = class SessionsHelper {
 				let mentor = null
 				try {
 					// Try cache with default organization context first
-					mentor = await cacheHelper.mentor.get(tenantCode, defaults.orgCode, mentorId)
+					mentor = await cacheHelper.mentor.get(tenantCode, mentorId)
 				} catch (cacheError) {
 					// Cache lookup failed - fallback to database
 				}
@@ -4177,7 +4162,7 @@ module.exports = class SessionsHelper {
 					mentor.organization_code
 				)
 
-				await this._clearUserCache([mentor.user_id], tenantCode, mentor.organization_code)
+				await this._clearUserCache([mentor.user_id], tenantCode)
 				return mentorId
 			})
 		)
@@ -4216,7 +4201,7 @@ module.exports = class SessionsHelper {
 					mentor.organization_code
 				)
 
-				await this._clearUserCache([mentor.user_id], tenantCode, mentor.organization_code)
+				await this._clearUserCache([mentor.user_id], tenantCode)
 				return mentor.user_id
 			})
 		)
@@ -4290,7 +4275,7 @@ module.exports = class SessionsHelper {
 	static async feedback(sessionId, bodyData, userId, organizationCode, tenantCode) {
 		try {
 			// Check if user is a mentor - try cache first, fallback to database
-			let mentorDetails = await cacheHelper.mentor.get(tenantCode, organizationCode, userId)
+			let mentorDetails = await cacheHelper.mentor.get(tenantCode, userId)
 			if (!mentorDetails) {
 				mentorDetails = await mentorExtensionQueries.getMentorExtension(userId, [], false, tenantCode)
 			}
