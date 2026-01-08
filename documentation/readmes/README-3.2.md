@@ -155,8 +155,8 @@ chat_elevate_communications"
 
 | Item          | Value                                                |
 |---------------|------------------------------------------------------|
-| Git Branch    | `release-3.2.0`                                        |
-| Docker Image  | `shikshalokamqa/elevate-chat-communications:1.0`            |
+| Git Branch    | `main`                                        |
+| Docker Image  | `shikshalokamqa/elevate-chat-communication-service:3.2`            |
 
 #
 
@@ -201,8 +201,8 @@ EVENTS_TOPIC=qa.userCreate   # Ensure this matches the User Service configuratio
 
 | Item          | Value                                                |
 |---------------|------------------------------------------------------|
-| Git Branch    | `release-3.2.0`                                        |
-| Docker Image  | `shikshalokamqa/elevate-mentoring:3.3`            |
+| Git Branch    | `release-3.2.25`                                        |
+| Docker Image  | `shikshalokamqa/elevate-mentoring:3.2`            |
 
 # 
 <br><br>
@@ -231,7 +231,7 @@ EVENTS_TOPIC=qa.userCreate   # Ensure this matches the User Service configuratio
 
 | Item          | Value                                                |
 |---------------|------------------------------------------------------|
-| Git Branch    | `release-3.2.0`                                        |
+| Git Branch    | `main`                                        |
 | Docker Image  | `shikshalokamqa/elevate-interface:3.3`            |
 
 #
@@ -270,8 +270,8 @@ Run the following query in the User Service database to disable the SCP feature:
 
 | Item          | Value                                                |
 |---------------|------------------------------------------------------|
-| Git Branch    | `release-3.2.0`                                        |
-| Docker Image  | `shikshalokamqa/eleavte-user:3.3`            |
+| Git Branch    | `master`                                        |
+| Docker Image  | `shikshalokamqa/elevate-user:3.3.24`            |
 
 
 
@@ -303,7 +303,24 @@ Run the following query in the User Service database to disable the SCP feature:
 | Item          | Value                                                |
 |---------------|------------------------------------------------------|
 | Git Branch    | `release-3.2.0`                                        |
-| Docker Image  | `shikshalokamqa/mentoring-mobile-app:3.3`            |
+| Docker Image  | `shikshalokamqa/mentoring-mobile-app:3.2.0.2`            |
+
+#
+
+#
+<br><br>
+## **Deployment of the Elevate Portal**
+
+### Step 1: Restart
+     Restart the Elevate Portal to apply the latest updates.
+
+
+**Version & Build Information**
+
+| Item          | Value                                                |
+|---------------|------------------------------------------------------|
+| Git Branch    | `release-1.1.0`                                        |
+| Docker Image  | `shikshalokamqa/elevate-portal:1.1.2`            |
 
 #
 
@@ -322,35 +339,6 @@ Run the following query in the User Service database to disable the SCP feature:
     Survey
     https://github.com/ELEVATE-Project/samiksha-service/tree/staging/migrations/correctScopeOrgValues
     
-    https://github.com/ELEVATE-Project/samiksha-service/tree/staging/migrations/normalizeOrgidInCollections
-
-Create an individual file for each script (under src/file-name.js) and execute them one by one using:
-
-```bash 
-    node file-name.js
-```
-
-
-**Version & Build Information**
-
-| Item          | Value                                                |
-|---------------|------------------------------------------------------|
-| Git Branch    | `release-3.2.0`                                        |
-| Docker Image  | `shikshalokamqa/mentoring-mobile-app:3.3`            |
-
-
-### Step 1: Execute Migrations
-     The latest User Service will no longer have orgCodes with spaces or uppercase characters. Since these changes will also reflect in the user token details, the current Project and Survey services need to work with the updated format. To ensure compatibility, we needed to normalize the orgIds in the collections by running these migrations
-
-    Project
-    https://github.com/ELEVATE-Project/project-service/tree/staging/migrations/correctOrgIdValuesInCollections
-
-    https://github.com/ELEVATE-Project/project-service/tree/staging/migrations/correctScopeOrgValues
-
-
-    Survey
-    https://github.com/ELEVATE-Project/samiksha-service/tree/staging/migrations/correctScopeOrgValues
-
     https://github.com/ELEVATE-Project/samiksha-service/tree/staging/migrations/normalizeOrgidInCollections
 
 Create an individual file for each script (under src/file-name.js) and execute them one by one using:
