@@ -147,7 +147,11 @@ module.exports = class Connection {
 	 */
 	async checkConnection(req) {
 		try {
-			return await connectionsService.checkConnectionIfExists(req.decodedToken.id, req.body)
+			return await connectionsService.checkConnectionIfExists(
+				req.decodedToken.id,
+				req.body,
+				req.decodedToken.tenant_code
+			)
 		} catch (error) {
 			throw error
 		}

@@ -39,13 +39,14 @@
       shell: cd {{release_path}}/src && npm i 
 
     - name: Run vault credentials
-      shell: "curl --location --request GET '{{ vaultAddress }}mentoring' --header 'X-Vault-Token: {{ slurpfile['content'] | b64decode }}' | jq '.data' > '{{ release_path 
-}}/data2.json'"
+      shell: "curl --location --request GET '{{ vaultAddress }}mentoring' --header 'X-Vault-Token: {{ slurpfile['content'] | b64decode }}' | jq '.data' > '{{ release_path }}/data2.json'"
       register: credentials
 
     - name: Get gcp credentials
-      shell: "curl --location --request GET '{{ vaultAddress }}gcp' --header 'X-Vault-Token: {{ slurpfile['content'] | b64decode }}' | jq '.data.data' > '{{ release_path 
-}}/gcp.json'"
+      shell: "curl --location --request GET '{{ vaultAddress }}gcp' --header 'X-Vault-Token: {{ slurpfile['content'] | b64decode }}' | jq '.data.data' > '{{ release_path }}/gcp.json'"
+
+    - name: Get config.json 
+      shell: "curl --location --request GET '{{ vaultAddress }}mentoringConfig' --header 'X-Vault-Token: {{ slurpfile['content'] | b64decode }}' | jq '.data.data' > '{{ release_path }}/config.json'"
 
     - name: Get config.json 
       shell: "curl --location --request GET '{{ vaultAddress }}mentoringConfig' --header 'X-Vault-Token: {{ slurpfile['content'] | b64decode }}' | jq '.data.data' > '{{ release_path 

@@ -715,9 +715,11 @@ module.exports = class MenteeExtensionQueries {
 			if (!Array.isArray(orgCodes) || orgCodes.length === 0) {
 				return []
 			}
+			const viewName = utils.getTenantViewName(tenantCode, MenteeExtension.tableName)
+
 			const query = `
 			SELECT user_id
-			FROM ${common.materializedViewsPrefix + MenteeExtension.tableName}
+			FROM ${viewName}
 			WHERE organization_code IN (:orgCodes) AND tenant_code = :tenantCode
 		`
 			const results = await Sequelize.query(query, {

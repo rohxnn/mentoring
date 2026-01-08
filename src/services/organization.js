@@ -69,18 +69,18 @@ module.exports = class OrganizationService {
 
 	static async createOrgExtension(eventBody, tenantCode) {
 		try {
-			console.log('EVENT BODY: ', eventBody)
-			console.log('DEFAULT ORGANISATION POLICY: ', common.getDefaultOrgPolicies())
+			console.log('🎯 [ORG EXTENSION] EVENT BODY: ', JSON.stringify(eventBody, null, 2))
+			console.log('📋 [ORG EXTENSION] DEFAULT POLICY: ', common.getDefaultOrgPolicies())
 			const extensionData = {
 				...common.getDefaultOrgPolicies(),
 				organization_id: eventBody.entityId,
-				organization_code: eventBody.organization_code || eventBody.entityId,
+				organization_code: eventBody.code,
 				created_by: eventBody.created_by,
 				updated_by: eventBody.created_by,
 				name: eventBody.name,
-				tenant_code: tenantCode,
+				tenant_code: eventBody.tenant_code,
 			}
-			console.log('EXTENSION DATA BEFORE INSERT: ', extensionData)
+			console.log('💾 [ORG EXTENSION] COMPLETE EXTENSION DATA: ', JSON.stringify(extensionData, null, 2))
 			const orgExtension = await organisationExtensionQueries.upsert(extensionData, tenantCode)
 			console.log('EXTENSION DATA AFTER INSERT: ', orgExtension)
 
