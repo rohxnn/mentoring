@@ -6,7 +6,7 @@ var messageReceived = function (message) {
 			const org = message.organizations?.[0]
 
 			if (!org) {
-				return resolve({ error: 'Organization missing' })
+				return reject(new Error('Organization ID is missing in create user event'))
 			}
 			message.organization_id = org.id
 			message.organization_code = org.code
