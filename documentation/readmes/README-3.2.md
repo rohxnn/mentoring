@@ -187,13 +187,7 @@ EVENTS_TOPIC=qa.userCreate   # Ensure this matches the User Service configuratio
     npm run db:init
 ```
 
-### Step 4 : Run script to update the rocket chat settings
-```bash
-    cd src/scripts
-    node updateRCSettings.js
-```
-
-### Step 5: Restart the Service
+### Step 4: Restart the Service
    Restart the Mentoring Service to apply the latest configurations and updates.
 
 
