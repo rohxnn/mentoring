@@ -186,14 +186,16 @@ module.exports = {
                             type,
                             categories,
                             recommended_for,
-                            deleted_at
+                            deleted_at,
+                            tenant_code
                         FROM
                             public.sessions
                     ),
                     UserExtensions AS (
                         SELECT
                             user_id,
-                            name
+                            name,
+                            tenant_code
                         FROM
                             public.user_extensions
                     ),
@@ -202,7 +204,8 @@ module.exports = {
                             session_id,
                             mentee_id,
                             joined_at,
-                            created_at
+                            created_at,
+                            tenant_code
                         FROM
                             public.session_attendees
                     )
@@ -225,7 +228,7 @@ module.exports = {
                     JOIN
                         SessionAttendees AS sa ON sa.session_id = Session.id AND sa.tenant_code = Session.tenant_code
                     WHERE
-                        s.tenant_code = :tenantCode
+                        Session.tenant_code = :tenantCode
                         AND (:userId IS NULL OR sa.mentee_id = :userId)
                         AND (:start_date IS NULL OR Session.start_date > :start_date)
                         AND (:end_date IS NULL OR Session.end_date < :end_date)
@@ -235,7 +238,7 @@ module.exports = {
                             OR :session_type = 'PRIVATE' AND Session.type = 'PRIVATE'
                         )
                         AND Session.deleted_at IS NULL
-                        DYNAMIC_AND_CLAUSE; order by Session.start_date ASC`,
+                        DYNAMIC_AND_CLAUSE order by Session.start_date ASC`,
 					updated_at: Sequelize.literal('CURRENT_TIMESTAMP'),
 				},
 				{
