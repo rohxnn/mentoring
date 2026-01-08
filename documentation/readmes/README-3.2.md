@@ -307,7 +307,6 @@ Run the following query in the User Service database to disable the SCP feature:
 
 #
 
-#
 <br><br>
 ## **Deployment of the Elevate Portal**
 
