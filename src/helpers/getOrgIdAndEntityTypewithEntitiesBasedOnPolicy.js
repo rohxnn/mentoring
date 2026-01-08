@@ -231,9 +231,17 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 			filter.status = common.ACTIVE_STATUS
 			filter.allow_filtering = true
 			filter.has_entities = true
+
+			const orgCodes = Array.isArray(organization_codes)
+				? organization_codes
+				: organization_codes
+				? [organization_codes]
+				: []
+
 			filter.organization_code = {
-				[Op.in]: defaultOrgCode ? [...organization_codes, defaultOrgCode] : organization_codes,
+				[Op.in]: defaultOrgCode ? [...orgCodes, defaultOrgCode] : orgCodes,
 			}
+
 			let entityTypes = []
 			if (entity_types) {
 				entityTypes = entity_types.split(',')

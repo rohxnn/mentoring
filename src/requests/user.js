@@ -925,7 +925,8 @@ const getUserDetailedListUsingCache = async function (userIds, tenantCode, delet
 		await Promise.all(
 			userDetails.map(async (user) => {
 				if (!user.deleted_at && user.email) {
-					user.email = await emailEncryption.decryptAndValidate(user.email)
+					let decryptedEmail = await emailEncryption.decryptAndValidate(user.email)
+					user.email = decryptedEmail ? decryptedEmail : user.email
 				}
 
 				if (user.image) {
