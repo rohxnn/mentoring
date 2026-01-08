@@ -303,7 +303,7 @@ Run the following query in the User Service database to disable the SCP feature:
 
 <br><br>
 ## **Deployment of the Elevate Portal**
-.[Repository](https://github.com/ELEVATE-Project/elevate-portal).
+[Elevate Portal Repository](https://github.com/ELEVATE-Project/elevate-portal)
 
 ### Step 1: Restart
      Restart the Elevate Portal to apply the latest updates.
