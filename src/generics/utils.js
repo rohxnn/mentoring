@@ -16,6 +16,8 @@ const startCase = require('lodash/startCase')
 const common = require('@constants/common')
 const crypto = require('crypto')
 const _ = require('lodash')
+const { elevateLog } = require('elevate-logger')
+const logger = elevateLog.init()
 
 const hash = (str) => {
 	const salt = bcryptJs.genSaltSync(10)
@@ -303,7 +305,7 @@ function restructureBody(requestBody, entityData, allowedKeys) {
 		if (Object.keys(requestBody.custom_entity_text).length === 0) requestBody.custom_entity_text = null
 		return requestBody
 	} catch (error) {
-		console.log(err)
+		console.log(error)
 	}
 }
 
@@ -752,7 +754,9 @@ function filterEntitiesBasedOnParent(data, defaultOrgCode, doNotRemoveDefaultOrg
 
 		let outputArray = data[key]
 		if (countOfEachKey > 1 && countWithParentId == countOfEachKey - 1 && !doNotRemoveDefaultOrg) {
-			outputArray = data[key].filter((obj) => !(obj.organization_code === defaultOrgId && obj.parent_id === null))
+			outputArray = data[key].filter(
+				(obj) => !(obj.organization_code === defaultOrgCode && obj.parent_id === null)
+			)
 		}
 
 		result[key] = outputArray
@@ -1258,7 +1262,7 @@ function transformEntityTypes(input) {
  * @returns {String} returns tenant-specific view name.
  */
 const getTenantViewName = (tenantCode, tableName) => {
-	return `${tenantCode}_m_${tableName}`
+	return `${tenantCode}${common.materializedViewsPrefix}${tableName}`
 }
 
 function sortData(data = [], path = 'meta.sequence') {

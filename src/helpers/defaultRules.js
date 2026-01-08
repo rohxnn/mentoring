@@ -4,7 +4,8 @@ const mentorQueries = require('@database/queries/mentorExtension')
 const menteeQueries = require('@database/queries/userExtension')
 const common = require('@constants/common')
 
-const { isAMentor } = require('@generics/utils')
+const { isAMentor, getTenantViewName } = require('@generics/utils')
+
 const cacheHelper = require('@generics/cacheHelper')
 const { getDefaults } = require('@helpers/getDefaultOrgId')
 const { Op } = require('sequelize')
@@ -89,9 +90,9 @@ async function getUserDetailsFromView(userId, isAMentor, tenantCode) {
 async function getUserDetails(userId, isAMentor, tenantCode) {
 	try {
 		if (isAMentor) {
-			return await mentorQueries.getMentorExtension(userId, [], false, tenantCode)
+			return await cacheHelper.mentor.get(tenantCode, userId)
 		} else {
-			return await menteeQueries.getMenteeExtension(userId, [], false, tenantCode)
+			return await cacheHelper.mentee.get(tenantCode, userId)
 		}
 	} catch (error) {
 		console.log(error)
@@ -110,9 +111,9 @@ async function getUserDetails(userId, isAMentor, tenantCode) {
 async function getUserDetailsFromCache(userId, isAMentor, tenantCode, organisationCodes) {
 	try {
 		if (isAMentor) {
-			return await cacheHelper.mentor.get(tenantCode, organisationCodes, userId)
+			return await cacheHelper.mentor.get(tenantCode, userId)
 		} else {
-			return await cacheHelper.mentee.get(tenantCode, organisationCodes, userId)
+			return await cacheHelper.mentee.get(tenantCode, userId)
 		}
 	} catch (error) {
 		console.log(error)
@@ -129,7 +130,7 @@ exports.defaultRulesFilter = async function defaultRulesFilter({
 }) {
 	try {
 		const [userDetails, defaultRules] = await Promise.all([
-			getUserDetails(requesterId, isAMentor(roles), tenantCode),
+			getUserDetailsFromCache(requesterId, isAMentor(roles), tenantCode),
 			defaultRuleQueries.findAll({ type: ruleType, organization_code: requesterOrganizationCode }, tenantCode),
 		])
 
@@ -202,14 +203,11 @@ exports.defaultRulesFilter = async function defaultRulesFilter({
 			throw error
 		}
 
+		const viewName = getTenantViewName(tenantCode, mentorQueries.getTableName())
 		if (mentorWhereClause.length > 0) {
 			const filterClause = mentorWhereClause.join(' AND ')
 
-			whereClauses.push(
-				`mentor_id IN (SELECT user_id FROM ${
-					common.materializedViewsPrefix + (await mentorQueries.getTableName())
-				} WHERE ${filterClause})`
-			)
+			whereClauses.push(`mentor_id IN (SELECT user_id FROM ${viewName} WHERE ${filterClause})`)
 		}
 
 		return whereClauses.join(' AND ')
@@ -225,14 +223,14 @@ exports.validateDefaultRulesFilter = async function validateDefaultRulesFilter({
 	roles,
 	requesterOrganizationCode,
 	data,
-	tenant_code,
+	tenantCode,
 }) {
 	try {
 		const defaults = await getDefaults()
 		let orgCodes = { [Op.in]: [requesterOrganizationCode, defaults.orgCode] }
-		let tenantCodes = { [Op.in]: [tenant_code, defaults.tenantCode] }
+		let tenantCodes = { [Op.in]: [tenantCode, defaults.tenantCode] }
 		const [userDetails, defaultRules] = await Promise.all([
-			getUserDetailsFromCache(requesterId, isAMentor(roles), tenant_code, requesterOrganizationCode),
+			getUserDetailsFromCache(requesterId, isAMentor(roles), tenantCode, requesterOrganizationCode),
 			defaultRuleQueries.findAll({ type: ruleType, organization_code: orgCodes }, tenantCodes),
 		])
 

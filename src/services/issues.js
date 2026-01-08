@@ -23,11 +23,9 @@ module.exports = class issuesHelper {
 	static async create(bodyData, decodedToken, tenantCode) {
 		try {
 			// Try cache first using logged-in user's organization context
-			let userDetails = await cacheHelper.mentee.getCacheOnly(
-				tenantCode,
-				decodedToken.organization_code,
-				decodedToken.id
-			)
+			let userDetails =
+				(await cacheHelper.mentee.getCacheOnly(tenantCode, decodedToken.id)) ??
+				(await cacheHelper.mentor.getCacheOnly(tenantCode, decodedToken.id))
 			if (!userDetails) {
 				userDetails = await menteeExtensionQueries.getMenteeExtension(
 					decodedToken.id,
@@ -68,8 +66,7 @@ module.exports = class issuesHelper {
 				})
 			}
 
-			const tenantCodes = [tenantCode, defaults.tenantCode]
-			const orgCodes = [decodedToken.organization_code, defaults.orgCode]
+			const orgCode = decodedToken.organization_code
 
 			// Get email template with cache-first approach and database fallback
 
@@ -77,8 +74,6 @@ module.exports = class issuesHelper {
 				console.log(
 					`🔍 Issues.js - Fetching notification template: ${process.env.REPORT_ISSUE_EMAIL_TEMPLATE_CODE}`
 				)
-				console.log(`🔍 Issues.js - Tenant codes: [${tenantCodes.join(', ')}]`)
-				console.log(`🔍 Issues.js - Org codes: [${orgCodes.join(', ')}]`)
 
 				const templateData = await cacheHelper.notificationTemplates.get(
 					tenantCode,

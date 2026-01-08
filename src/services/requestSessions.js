@@ -41,7 +41,7 @@ module.exports = class requestSessionsHelper {
 
 	static async create(bodyData, userId, organizationCode, organizationId, SkipValidation, tenantCode) {
 		try {
-			const mentorUserExists = await cacheHelper.mentor.get(tenantCode, organizationCode, bodyData.requestee_id)
+			const mentorUserExists = await cacheHelper.mentor.get(tenantCode, bodyData.requestee_id)
 			if (!mentorUserExists) {
 				return responses.failureResponse({
 					statusCode: httpStatusCode.not_found,
@@ -410,7 +410,7 @@ module.exports = class requestSessionsHelper {
 			}
 
 			// Check if mentee user exists - try cache first
-			let userExists = await cacheHelper.mentee.get(tenantCode, orgCode, getRequestSessionDetails.requestor_id)
+			let userExists = await cacheHelper.mentee.get(tenantCode, getRequestSessionDetails.requestor_id)
 			if (!userExists) {
 				return responses.failureResponse({
 					statusCode: httpStatusCode.not_found,

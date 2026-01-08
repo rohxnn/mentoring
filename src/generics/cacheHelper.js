@@ -454,7 +454,7 @@ const sessions = {
 			// Step 1: Check cache for each session ID
 			console.log(`🔍 [getSessionKafka] Checking cache for ${sessionIds.length} sessions`)
 			for (const sessionId of sessionIds) {
-				const cachedSession = await this.getCacheOnly(tenantCode, organizationCode, sessionId)
+				const cachedSession = await this.getCacheOnly(tenantCode, sessionId)
 				if (cachedSession) {
 					foundSessions.push(cachedSession)
 				} else {
@@ -989,10 +989,10 @@ const organizations = {
  * TTL: 1 day (86400 seconds)
  */
 const mentor = {
-	async get(tenantCode, orgCode, mentorId) {
+	async get(tenantCode, mentorId) {
 		try {
 			// Cache mode: Check cache first
-			const cacheKey = await buildKey({ tenantCode, orgCode: orgCode, ns: 'mentor', id: mentorId })
+			const cacheKey = await buildKey({ tenantCode, ns: 'mentor', id: mentorId })
 			const useInternal = nsUseInternal('mentor')
 			const cachedProfile = await get(cacheKey, { useInternal })
 			if (cachedProfile) {
@@ -1007,23 +1007,22 @@ const mentor = {
 		}
 	},
 
-	async set(tenantCode, orgCode, mentorId, profileData) {
+	async set(tenantCode, mentorId, profileData) {
 		try {
 			// Sanitize profile data - remove fields that are cached separately
 			const sanitizedData = this._sanitizeProfileData(profileData)
 
-			const cacheKey = await buildKey({ tenantCode, orgCode: orgCode, ns: 'mentor', id: mentorId })
+			const cacheKey = await buildKey({ tenantCode, ns: 'mentor', id: mentorId })
 			const useInternal = nsUseInternal('mentor')
 			await set(cacheKey, sanitizedData, 86400, { useInternal }) // 1 day TTL
-			console.log(`💾 Mentor profile ${mentorId} cached: tenant:${tenantCode}:org:${orgCode}`)
 		} catch (error) {
 			console.error(`❌ Failed to cache mentor profile ${mentorId}:`, error)
 		}
 	},
 
-	async delete(tenantCode, orgCode, mentorId) {
+	async delete(tenantCode, mentorId) {
 		try {
-			const cacheKey = await buildKey({ tenantCode, orgCode: orgCode, ns: 'mentor', id: mentorId })
+			const cacheKey = await buildKey({ tenantCode, ns: 'mentor', id: mentorId })
 			const useInternal = nsUseInternal('mentor')
 			await del(cacheKey, { useInternal })
 			// Mentor cache deleted
@@ -1056,14 +1055,13 @@ const mentor = {
 	/**
 	 * Get mentor profile from cache only. Returns null if cache miss or no data.
 	 * @param {string} tenantCode - Tenant code for multi-tenancy
-	 * @param {string} orgCode - Organization code
 	 * @param {string} id - Mentor user ID
 	 * @returns {Promise<Object|null>} Profile data from cache or null if cache miss
 	 */
-	async getCacheOnly(tenantCode, orgCode, id) {
+	async getCacheOnly(tenantCode, id) {
 		try {
 			// Cache mode: Check cache first
-			const cacheKey = await buildKey({ tenantCode, orgCode: orgCode, ns: 'mentor', id: id })
+			const cacheKey = await buildKey({ tenantCode, ns: 'mentor', id: id })
 			const useInternal = nsUseInternal('mentor')
 			const cachedProfile = await get(cacheKey, { useInternal })
 			if (cachedProfile) {
@@ -1156,7 +1154,7 @@ const mentor = {
 
 			// Step 1: Check cache for each user ID
 			for (const userId of userIds) {
-				const cachedUser = await this.getCacheOnly(tenantCode, organizationCode, userId)
+				const cachedUser = await this.getCacheOnly(tenantCode, userId)
 				if (cachedUser) {
 					foundUsers.push(cachedUser)
 				} else {
@@ -1229,10 +1227,10 @@ const mentor = {
  * TTL: 1 day (86400 seconds)
  */
 const mentee = {
-	async get(tenantCode, orgCode, menteeId) {
+	async get(tenantCode, menteeId) {
 		try {
 			// Cache mode: Check cache first
-			const cacheKey = await buildKey({ tenantCode, orgCode: orgCode, ns: 'mentee', id: menteeId })
+			const cacheKey = await buildKey({ tenantCode, ns: 'mentee', id: menteeId })
 			const useInternal = nsUseInternal('mentee')
 			const cachedProfile = await get(cacheKey, { useInternal })
 			if (cachedProfile) {
@@ -1247,23 +1245,23 @@ const mentee = {
 		}
 	},
 
-	async set(tenantCode, orgCode, menteeId, profileData) {
+	async set(tenantCode, menteeId, profileData) {
 		try {
 			// Sanitize profile data - remove fields that are cached separately
 			const sanitizedData = this._sanitizeProfileData(profileData)
 
-			const cacheKey = await buildKey({ tenantCode, orgCode: orgCode, ns: 'mentee', id: menteeId })
+			const cacheKey = await buildKey({ tenantCode, ns: 'mentee', id: menteeId })
 			const useInternal = nsUseInternal('mentee')
 			await set(cacheKey, sanitizedData, 86400, { useInternal }) // 1 day TTL
-			console.log(`💾 Mentee profile ${menteeId} cached: tenant:${tenantCode}:org:${orgCode}`)
+			console.log(`💾 Mentee profile ${menteeId} cached: tenant:${tenantCode}`)
 		} catch (error) {
 			console.error(`❌ Failed to cache mentee profile ${menteeId}:`, error)
 		}
 	},
 
-	async delete(tenantCode, orgCode, menteeId) {
+	async delete(tenantCode, menteeId) {
 		try {
-			const cacheKey = await buildKey({ tenantCode, orgCode: orgCode, ns: 'mentee', id: menteeId })
+			const cacheKey = await buildKey({ tenantCode, ns: 'mentee', id: menteeId })
 			const useInternal = nsUseInternal('mentee')
 			await del(cacheKey, { useInternal })
 			// Mentee cache deleted
@@ -1296,14 +1294,13 @@ const mentee = {
 	/**
 	 * Get mentee profile from cache only. Returns null if cache miss or no data.
 	 * @param {string} tenantCode - Tenant code for multi-tenancy
-	 * @param {string} organizationCode - Organization code
 	 * @param {string} id - Mentee user ID
 	 * @returns {Promise<Object|null>} Profile data from cache or null if cache miss
 	 */
-	async getCacheOnly(tenantCode, organizationCode, id) {
+	async getCacheOnly(tenantCode, id) {
 		try {
 			// Cache mode: Check cache first
-			const cacheKey = await buildKey({ tenantCode, orgCode: organizationCode, ns: 'mentee', id: id })
+			const cacheKey = await buildKey({ tenantCode, ns: 'mentee', id: id })
 			const useInternal = nsUseInternal('mentee')
 			const cachedProfile = await get(cacheKey, { useInternal })
 			if (cachedProfile) {
@@ -1404,7 +1401,7 @@ const mentee = {
 
 			// Step 1: Check cache for each user ID
 			for (const userId of userIds) {
-				const cachedUser = await this.getCacheOnly(tenantCode, organizationCode, userId)
+				const cachedUser = await this.getCacheOnly(tenantCode, userId)
 				if (cachedUser) {
 					foundUsers.push(cachedUser)
 				} else {

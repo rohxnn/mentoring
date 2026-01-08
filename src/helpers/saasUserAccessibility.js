@@ -19,7 +19,7 @@ async function checkIfUserIsAccessible(userId, userData, tenantCode, orgCode) {
 
 		// Fetch policy details
 		const userPolicyDetails =
-			(await cacheHelper.mentee.getCacheOnly(tenantCode, orgCode, userId)) ||
+			(await cacheHelper.mentee.getCacheOnly(tenantCode, userId)) ||
 			(await menteeQueries.getMenteeExtension(
 				userId,
 				['external_mentor_visibility', 'external_mentee_visibility', 'organization_id'],
