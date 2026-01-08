@@ -276,11 +276,11 @@ Run the following query in the User Service database to disable the SCP feature:
 ### Step 1: update .env
 
 ```env
-    "chatBaseUrl" = "https://chat-dev-temp.elevate-apis.shikshalokam.org/",
-    "chatWebSocketUrl" = "wss://chat-dev-temp.elevate-apis.shikshalokam.org/websocket",
+    "chatBaseUrl" = "https://rocket-chat-domain-url.com", 
+    "chatWebSocketUrl" = "wss://rocket-chat-domain-url.com/websocket", 
 
 ```
-### Step 2: Run form script
+### Step 2: Create / Update Forms  Using command
 
 > export AUTH_TOKEN= \< ADMIN_ACCESS_TOKEN \>
 >
@@ -303,6 +303,7 @@ Run the following query in the User Service database to disable the SCP feature:
 
 <br><br>
 ## **Deployment of the Elevate Portal**
+.[Repository](https://github.com/ELEVATE-Project/elevate-portal).
 
 ### Step 1: Restart
      Restart the Elevate Portal to apply the latest updates.
