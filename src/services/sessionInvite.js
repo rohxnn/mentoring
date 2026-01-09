@@ -1153,11 +1153,6 @@ module.exports = class UserInviteHelper {
 						)
 						if (!mentee) {
 							// Skip missing mentee and continue processing the rest
-							console.warn(
-								`Mentee with ID ${menteeId} not found, skipping from session ${
-									item.id || 'new session'
-								}`
-							)
 						} else {
 							menteeEmails.push(mentee.email)
 						}
