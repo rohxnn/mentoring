@@ -45,7 +45,6 @@ module.exports = class Mentees {
 				req.pageNo,
 				req.pageSize,
 				req.searchText,
-				req.decodedToken.organization_code,
 				req.decodedToken.tenant_code
 			)
 			return sessions
