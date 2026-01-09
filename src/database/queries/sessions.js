@@ -6,6 +6,7 @@ const sequelize = require('sequelize')
 const moment = require('moment')
 const Sequelize = require('@database/models/index').sequelize
 const SessionAttendee = require('@database/models/index').SessionAttendee
+const { attendeeData } = require('@dtos/attendee')
 
 exports.getColumns = async () => {
 	try {
@@ -91,11 +92,7 @@ exports.findSessionWithAttendee = async (sessionId, userId, tenantCode) => {
 		return result
 			? {
 					...result.get(),
-					attendee_id: attendee?.id || null,
-					enrolled_type: attendee?.type || null,
-					attendee_meeting_info: attendee?.meeting_info || null,
-					joined_at: attendee?.joined_at || null,
-					mentee_id: attendee?.mentee_id || null,
+					...attendeeData(attendee),
 			  }
 			: null
 	} catch (error) {

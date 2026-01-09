@@ -781,9 +781,10 @@ const getUserDetailedList = function (userIds, tenantCode, deletedUsers = false,
 				organization_id: {
 					[Op.in]: Array.from(organizationIds),
 				},
+				tenant_code: tenantCode,
 			}
 
-			const organizationDetails = await organisationExtensionQueries.findAll(filter, tenantCode, {
+			const organizationDetails = await organisationExtensionQueries.findAll(filter, {
 				attributes: ['name', 'organization_id', 'organization_code'],
 			})
 
@@ -838,7 +839,7 @@ const getUserDetailedList = function (userIds, tenantCode, deletedUsers = false,
 
 			return resolve(response)
 		} catch (error) {
-			return reject(error)
+			throw error(error)
 		}
 	})
 }
@@ -910,8 +911,8 @@ const getUserDetailedListUsingCache = async function (userIds, tenantCode, delet
 				{
 					organization_id: { [Op.in]: missingOrgInfoInCache.map((i) => i.organization_id) },
 					organization_code: { [Op.in]: missingOrgInfoInCache.map((i) => i.organization_code) },
+					tenant_code: tenantCode,
 				},
-				tenantCode,
 				{ attributes: ['name', 'organization_id', 'organization_code'] }
 			)
 
@@ -924,7 +925,8 @@ const getUserDetailedListUsingCache = async function (userIds, tenantCode, delet
 		await Promise.all(
 			userDetails.map(async (user) => {
 				if (!user.deleted_at && user.email) {
-					user.email = await emailEncryption.decryptAndValidate(user.email)
+					let decryptedEmail = await emailEncryption.decryptAndValidate(user.email)
+					user.email = decryptedEmail ? decryptedEmail : user.email
 				}
 
 				if (user.image) {

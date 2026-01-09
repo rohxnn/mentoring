@@ -78,18 +78,6 @@ async function startConsumer(kafkaClient) {
 				let response
 
 				if (payload && topic === process.env.EVENTS_TOPIC) {
-					if (payload.eventType === 'roleChange') {
-						response = await rolechangeConsumer.messageReceived(payload)
-					}
-					if (payload.eventType === 'create' || payload.eventType === 'bulk-create') {
-						response = await createuserConsumer.messageReceived(payload)
-					}
-					if (payload.eventType === 'delete') {
-						response = await deleteuserConsumer.messageReceived(payload)
-					}
-					if (payload.eventType === 'update' || payload.eventType === 'bulk-update') {
-						response = await updateuserConsumer.messageReceived(payload)
-					}
 					// Handle organization events
 					if (
 						payload.entity === 'organization' &&
@@ -98,6 +86,20 @@ async function startConsumer(kafkaClient) {
 							payload.eventType === 'deactivate')
 					) {
 						response = await organizationConsumer.messageReceived(payload)
+					}
+					if (payload.entity === 'user') {
+						if (payload.eventType === 'roleChange') {
+							response = await rolechangeConsumer.messageReceived(payload)
+						}
+						if (payload.eventType === 'create' || payload.eventType === 'bulk-create') {
+							response = await createuserConsumer.messageReceived(payload)
+						}
+						if (payload.eventType === 'delete') {
+							response = await deleteuserConsumer.messageReceived(payload)
+						}
+						if (payload.eventType === 'update' || payload.eventType === 'bulk-update') {
+							response = await updateuserConsumer.messageReceived(payload)
+						}
 					}
 				}
 				if (payload && topic === process.env.CLEAR_INTERNAL_CACHE) {

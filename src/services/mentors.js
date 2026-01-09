@@ -891,16 +891,15 @@ module.exports = class MentorsHelper {
 					}
 				}
 
-				let communications = null
 				if (cachedProfile?.meta?.communications_user_id) {
 					try {
 						const chat = await communicationHelper.login(id, tenantCode)
-						communications = chat
+
+						cachedProfile.meta = {
+							...cachedProfile.meta,
+							chat,
+						}
 					} catch (error) {}
-				}
-				cachedProfile.meta = {
-					...cachedProfile.meta,
-					communications,
 				}
 
 				return responses.successResponse({
@@ -912,6 +911,12 @@ module.exports = class MentorsHelper {
 
 			// Get mentor extension data efficiently (avoid redundant queries)
 			let mentorExtension = await cacheHelper.mentor.get(tenantCode, id)
+			if (!mentorExtension) {
+				return responses.failureResponse({
+					statusCode: httpStatusCode.not_found,
+					message: 'MENTORS_NOT_FOUND',
+				})
+			}
 
 			// If user authentication is required, perform validation
 			if (userId !== '' && isAMentor !== '' && roles !== '') {
@@ -963,12 +968,6 @@ module.exports = class MentorsHelper {
 				}
 			}
 
-			if (!mentorExtension) {
-				return responses.failureResponse({
-					statusCode: httpStatusCode.not_found,
-					message: 'MENTORS_NOT_FOUND',
-				})
-			}
 			mentorExtension = utils.deleteProperties(mentorExtension, ['created_at', 'updated_at'])
 
 			mentorExtension = utils.deleteProperties(mentorExtension, ['phone'])
@@ -1456,37 +1455,44 @@ module.exports = class MentorsHelper {
 				})
 			}
 
-			const mentorIds = extensionDetails.data.map((item) => item.user_id)
+			const mentorIds = []
+			const organizationCodes = []
+			const uniqueOrganizations = new Map() // key: organization_code
 
-			//Extract unique organization_codes
-			const uniqueOrganizations = [
-				...new Map(
-					extensionDetails.data.map((item) => [
-						item.organization_code,
-						{ organization_id: item.organization_id, organization_code: item.organization_code },
-					])
-				).values(),
-			]
+			for (const item of extensionDetails.data) {
+				// mentor ids
+				mentorIds.push(item.user_id)
 
-			const organizationCodes = [...new Set(extensionDetails.data.map((user) => user.organization_code))]
+				// organization codes (unique)
+				if (item.organization_code && !uniqueOrganizations.has(item.organization_code)) {
+					organizationCodes.push(item.organization_code)
 
-			//Query organization table (only if there are codes to query)
-			const orgMap = {}
-			if (uniqueOrganizations.length > 0) {
-				for (const orgData of uniqueOrganizations) {
-					let orgInfo = await cacheHelper.organizations.get(
-						tenantCode,
-						orgData.organization_code,
-						orgData.organization_id
-					)
-
-					if (orgInfo && orgInfo.organization_code) {
-						orgMap[orgInfo.organization_code] = {
-							id: orgInfo.organization_code,
-							name: orgInfo.name,
-						}
-					}
+					uniqueOrganizations.set(item.organization_code, {
+						organization_id: item.organization_id,
+						organization_code: item.organization_code,
+					})
 				}
+			}
+			const organizations = Array.from(uniqueOrganizations.values())
+
+			const orgMap = {}
+			if (organizations.length > 0) {
+				await Promise.all(
+					organizations.map(async function (orgData) {
+						let orgInfo = await cacheHelper.organizations.get(
+							tenantCode,
+							orgData.organization_code,
+							orgData.organization_id
+						)
+
+						if (orgInfo && orgInfo.organization_code) {
+							orgMap[orgInfo.organization_code] = {
+								id: orgInfo.organization_code,
+								name: orgInfo.name,
+							}
+						}
+					})
+				)
 			}
 
 			//Attach organization details and decrypt email for each user

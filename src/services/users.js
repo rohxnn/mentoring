@@ -112,8 +112,9 @@ module.exports = class UserHelper {
 		try {
 			const userId = updateData.userId
 
-			const isNewUser = await this.#checkUserExistence(userId, decodedToken.tenant_code)
-			const result = await this.#createOrUpdateUserAndOrg(userId, isNewUser, undefined, updateData?.tenantCode)
+			const userTenantCode = updateData.tenantCode ? updateData.tenantCode : decodedToken.tenant_code
+			const isNewUser = await this.#checkUserExistence(userId, userTenantCode)
+			const result = await this.#createOrUpdateUserAndOrg(userId, isNewUser, undefined, tenantCode)
 			return result
 		} catch (error) {
 			throw error

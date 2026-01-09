@@ -102,6 +102,7 @@ microservices: [
 ```env
 POSTGRES_URL=postgres://user:pass@localhost:5432/mydb
 KAFKA_URL=kafka://localhost:9092
+
 KAFKA_HEALTH_CHECK_TOPIC = mentoring-health-check-topic-check
 ```
 

@@ -59,20 +59,18 @@ module.exports = class MenteesHelper {
 				}
 			}
 
-			let communications = null
 			if (cachedProfile?.meta?.communications_user_id) {
 				try {
 					const chat = await communicationHelper.login(id, tenantCode)
-					communications = chat
+					cachedProfile.meta = {
+						...cachedProfile.meta,
+						chat,
+					}
 				} catch (error) {
 					console.error('Failed to log in to communication service:', error)
 				}
 			}
 
-			cachedProfile.meta = {
-				...cachedProfile.meta,
-				communications,
-			}
 			return responses.successResponse({
 				statusCode: httpStatusCode.ok,
 				message: 'PROFILE_FETCHED_SUCCESSFULLY',
@@ -953,7 +951,7 @@ module.exports = class MenteesHelper {
 				const mentor = mentorDetails.result.find((mentorDetail) => mentorDetail.user_id === session.mentor_id)
 				if (mentor) {
 					session.mentor_name = mentor.name
-					session.organization = mentor.organization.name
+					session.organization = mentor.organization?.name
 				}
 			})
 
@@ -1623,7 +1621,6 @@ module.exports = class MenteesHelper {
 			})
 
 			let orgnisationData = await getOrganizationHelper.organizationListFromCache(uniqueOrgs, tenantCode)
-
 			const orgMap = {}
 			orgnisationData.forEach((org) => {
 				orgMap[org.organization_id] = {
