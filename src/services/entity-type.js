@@ -290,13 +290,6 @@ module.exports = class EntityHelper {
 				})
 			}
 
-			// Clear cache for affected models before deletion
-			await entityTypeCache.clearUserCachesForEntityType(
-				organizationCode,
-				tenantCode,
-				entityToDelete.model_names,
-				entityToDelete.value
-			)
 
 			// SECOND: Delete from database
 			const deleteCount = await entityTypeQueries.deleteOneEntityType(id, organizationCode, tenantCode)
@@ -452,7 +445,7 @@ module.exports = class EntityHelper {
 					await entityTypeCache.clearUserCachesForEntityType(
 						entityToDelete.organization_code,
 						tenantCode,
-						deleteEntityTypesAndEntities.model_names,
+						entitiesToDelete.model_names,
 						entityToDelete.value
 					)
 				}

@@ -25,7 +25,6 @@ const kafkaCommunication = require('@generics/kafka-communication')
 
 const emailEncryption = require('@utils/emailEncryption')
 const _ = require('lodash')
-const organization = require('@validators/v1/organization')
 
 /**
  * @method fetchOrgDetails

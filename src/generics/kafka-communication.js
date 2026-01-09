@@ -57,7 +57,11 @@ const pushUncachedUsersToKafka = async (users) => {
 			topic: process.env.EVENTS_TOPIC,
 			messages: [{ value: JSON.stringify({ eventType: 'readUser', users }) }],
 		}
-		return await pushPayloadToKafka(payload)
+		const response = await pushPayloadToKafka(payload)
+		if (response instanceof Error) {
+			throw response
+		}
+		return response
 	} catch (error) {
 		console.log(error)
 		throw error

@@ -122,7 +122,9 @@ module.exports = class FormsHelper {
 
 			// delete form verions
 			try {
-				await cacheHelper.formVersions.delete(tenantCode, originalForm.organization_code)
+				if (originalForm?.organization_code) {
+					await cacheHelper.formVersions.delete(tenantCode, originalForm.organization_code)
+				}
 			} catch (error) {
 				console.warn('Failed to invalidate form form versions:', error)
 			}
@@ -239,9 +241,9 @@ module.exports = class FormsHelper {
 			let formsVersionData = null
 
 			try {
-				formsVersionData = await cacheHelper.formVersions.get(tenantCode, orgCode, formsVersionData)
-			} catch (Error) {
-				console.log('failed to set the form versions ', Error)
+				formsVersionData = await cacheHelper.formVersions.get(tenantCode, orgCode)
+			} catch (cacheError) {
+				console.error('Failed to get form versions from cache:', cacheError)
 			}
 
 			if (!formsVersionData) {
@@ -254,8 +256,8 @@ module.exports = class FormsHelper {
 
 			try {
 				await cacheHelper.formVersions.set(tenantCode, orgCode, usersForms)
-			} catch (Error) {
-				console.log('failed to set the forms', Error)
+			} catch (cacheError) {
+				console.error('Failed to set form versions in cache:', cacheError)
 			}
 
 			return responses.successResponse({
