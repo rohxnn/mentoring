@@ -700,7 +700,20 @@ module.exports = class ConnectionHelper {
 				})
 			}
 
+			// Log parameters before calling resolve
+			console.log('=== checkConnectionIfExists - Before resolve ===')
+			console.log('user_id:', user_id)
+			console.log('friend_id:', friend_id)
+			console.log('tenantCode:', tenantCode, 'type:', typeof tenantCode)
+			console.log('tenantCode is undefined?', tenantCode === undefined)
+			console.log('tenantCode is null?', tenantCode === null)
+			console.log('tenantCode is empty string?', tenantCode === '')
+			console.log('Calling communicationHelper.resolve with friend_id:', friend_id, 'tenantCode:', tenantCode)
+			console.log('===============================================')
+
 			const userInfo = await communicationHelper.resolve(friend_id, tenantCode)
+			console.log('communicationHelper.resolve response:', userInfo)
+
 			if (!userInfo) {
 				return responses.failureResponse({
 					responseCode: 'CLIENT_ERROR',
