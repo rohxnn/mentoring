@@ -206,8 +206,8 @@ EVENTS_TOPIC=qa.userCreate   # Ensure this matches the User Service configuratio
 
 ```env
 
-    "ROUTE_CONFIG_JSON_URLS_PATHS" = "https://raw.githubusercontent.com/ELEVATE-Project/utils/refs/heads/staging/interface-routes/elevate-routes.json"
-    // update elevate-mentoring package version
+    "ROUTE_CONFIG_JSON_URLS_PATHS" = "https://raw.githubusercontent.com/ELEVATE-Project/utils/refs/heads/sass-qa/interface-routes/elevate-routes.json"
+    // update elevate-mentoring package version, keep other package version same as previous
     "REQUIRED_PACKAGES" = "elevate-mentoring@1.2.93”
 ```
 
@@ -226,7 +226,7 @@ EVENTS_TOPIC=qa.userCreate   # Ensure this matches the User Service configuratio
 | Item          | Value                                                |
 |---------------|------------------------------------------------------|
 | Git Branch    | `main`                                        |
-| Docker Image  | `shikshalokamqa/elevate-interface:3.3`            |
+| Docker Image  | `shikshalokamqa/elevate-interface:3.3.2`            |
 
 #
 <br><br>
@@ -341,7 +341,7 @@ Create an individual file for each script (under src/file-name.js) and execute t
     node file-name.js
 ```
 
-# 
+#
 
 # **References**
 
