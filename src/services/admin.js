@@ -43,7 +43,12 @@ class NotificationHelper {
 				return true
 			}
 
-			const template = await cacheHelper.notificationTemplates.get(tenantCode, orgCode, templateCode)
+			// Handle arrays: extract first value (user codes), cacheHelper will fallback to defaults if not found
+			const userTenantCode = Array.isArray(tenantCode) ? tenantCode[0] : tenantCode
+			const userOrgCode = Array.isArray(orgCode) ? orgCode[0] : orgCode
+
+			// cacheHelper.get will automatically search user codes first, then defaults when cache is disabled
+			const template = await cacheHelper.notificationTemplates.get(userTenantCode, userOrgCode, templateCode)
 			if (!template) {
 				console.log(`Template ${templateCode} not found`)
 				return true
@@ -86,7 +91,12 @@ class NotificationHelper {
 		try {
 			if (!sessions?.length || !templateCode) return true
 
-			const template = await cacheHelper.notificationTemplates.get(tenantCode, orgCode, templateCode)
+			// Handle arrays: extract first value (user codes), cacheHelper will fallback to defaults if not found
+			const userTenantCode = Array.isArray(tenantCode) ? tenantCode[0] : tenantCode
+			const userOrgCode = Array.isArray(orgCode) ? orgCode[0] : orgCode
+
+			// cacheHelper.get will automatically search user codes first, then defaults when cache is disabled
+			const template = await cacheHelper.notificationTemplates.get(userTenantCode, userOrgCode, templateCode)
 			if (!template) {
 				console.log(`Template ${templateCode} not found`)
 				return true
@@ -212,6 +222,9 @@ module.exports = class AdminService {
 				})
 			}
 
+			// Get defaults early for use in notifications
+			const defaults = await getDefaults()
+
 			// Step 4: Check for user connections
 			const connectionCount = await connectionQueries.getConnectionsCount('', userId, [], tenantCode) // filter, userId = "1", organizationIds = ["1", "2"]
 
@@ -222,10 +235,14 @@ module.exports = class AdminService {
 					mentorIds = []
 				}
 				// Get mentor details for notification
-				const connectedMentors = await userExtensionQueries.getUsersByUserIds(mentorIds, {
-					attributes: ['user_id', 'name', 'email'],
+				const connectedMentors = await userExtensionQueries.getUsersByUserIds(
+					mentorIds,
+					{
+						attributes: ['user_id', 'name', 'email'],
+					},
 					tenantCode,
-				})
+					false
+				)
 
 				// Soft delete in communication service - handle invalid-users gracefully
 				let removeChatUser, removeChatAvatar, updateChatUserName
@@ -258,20 +275,29 @@ module.exports = class AdminService {
 
 				if (isMentor) {
 					// 1. Notify connected mentees about mentor deletion
-					const menteeIds = await connectionQueries.getConnectedUsers(userId, 'friend_id', 'user_id')
+					const menteeIds = await connectionQueries.getConnectedUsers(
+						userId,
+						'friend_id',
+						'user_id',
+						tenantCode
+					)
 					const connectedMentees = await userExtensionQueries.getUsersByUserIds(
 						menteeIds,
 						{
 							attributes: ['user_id', 'name', 'email'],
 						},
+						tenantCode,
 						true
 					)
 
 					if (connectedMentees.length > 0) {
+						const orgCodes = [userInfo.organization_code, defaults.orgCode].filter(Boolean)
+						const tenantCodes = [tenantCode, defaults.tenantCode].filter(Boolean)
 						result.isMenteeNotifiedAboutMentorDeletion = await this.notifyMenteesAboutMentorDeletion(
 							connectedMentees,
 							userInfo.name || 'Mentor',
-							userInfo.organization_id || ''
+							orgCodes,
+							tenantCodes
 						)
 					} else {
 						result.isMenteeNotifiedAboutMentorDeletion = true
@@ -326,7 +352,6 @@ module.exports = class AdminService {
 			// Step 5: Session Request Deletion & Notifications
 			const requestSessions = await this.findAllRequestSessions(userId, tenantCode) // userId = "1"
 
-			const defaults = await getDefaults()
 			if (!defaults.orgCode)
 				return responses.failureResponse({
 					message: 'DEFAULT_ORG_CODE_NOT_SET',
@@ -1318,8 +1343,8 @@ module.exports = class AdminService {
 				{
 					attributes: ['user_id', 'name', 'email'],
 				},
-				false,
-				tenantCode
+				tenantCode,
+				false
 			)
 
 			return mentees || []
@@ -1419,8 +1444,8 @@ module.exports = class AdminService {
 					{
 						attributes: ['name', 'email'],
 					},
-					false,
-					tenantCodes[0]
+					tenantCodes[0],
+					false
 				)
 
 				if (menteeDetails.length > 0) {
@@ -1470,8 +1495,8 @@ module.exports = class AdminService {
 					{
 						attributes: ['name', 'email'],
 					},
-					false,
-					tenantCodes[0]
+					tenantCodes[0],
+					false
 				)
 
 				if (managerDetails.length > 0) {
@@ -1528,8 +1553,8 @@ module.exports = class AdminService {
 					{
 						attributes: ['name', 'email'],
 					},
-					false,
-					tenantCodes[0]
+					tenantCodes[0],
+					false
 				)
 
 				if (managerDetails.length > 0) {
@@ -1560,13 +1585,17 @@ module.exports = class AdminService {
 		}
 	}
 
-	static async notifyAttendeesAboutSessionDeletion(sessions, orgCode, tenantCode) {
+	static async notifyAttendeesAboutSessionDeletion(sessions, orgCodes, tenantCodes) {
 		try {
 			const templateCode = process.env.SESSION_DELETED_MENTOR_DELETION_EMAIL_TEMPLATE
 			if (!templateCode) {
 				console.log('No email template configured for session deletion due to mentor deletion')
 				return
 			}
+
+			// Use first organization and tenant codes for database queries
+			const orgCode = Array.isArray(orgCodes) ? orgCodes[0] : orgCodes
+			const tenantCode = Array.isArray(tenantCodes) ? tenantCodes[0] : tenantCodes
 
 			// Group sessions by attendee
 			const sessionsByAttendee = {}
@@ -1585,8 +1614,8 @@ module.exports = class AdminService {
 					{
 						attributes: ['name', 'email'],
 					},
-					false,
-					tenantCode[0]
+					tenantCode,
+					false
 				)
 
 				if (attendeeDetails.length > 0) {
@@ -1594,10 +1623,10 @@ module.exports = class AdminService {
 						await NotificationHelper.sendGenericNotification({
 							recipients: attendeeDetails,
 							templateCode,
-							orgCode,
+							orgCode: orgCodes,
 							templateData: { sessionName: session.title },
 							subjectData: { sessionName: session.title },
-							tenantCode,
+							tenantCodes,
 						})
 					}
 				}
