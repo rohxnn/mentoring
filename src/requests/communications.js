@@ -173,27 +173,9 @@ exports.getUserId = async (userId, tenantCode) => {
 		const url = apiEndpoints.COMMUNICATION_GET_USER_ID
 		const body = { external_user_id: userId, tenant_code: tenantCode }
 
-		// Log the request details before sending
-		console.log('=== Mentoring Service -> Communications Service Call ===')
-		console.log('URL:', url)
-		console.log('Request Body:', JSON.stringify(body, null, 2))
-		console.log('Body Keys:', Object.keys(body))
-		console.log('userId:', userId, 'type:', typeof userId)
-		console.log('tenantCode:', tenantCode, 'type:', typeof tenantCode)
-		console.log('tenantCode in body:', body.tenant_code)
-		console.log('=======================================================')
-
 		const response = await apiClient.post(url, body)
 		return response.data
 	} catch (err) {
-		console.error('=== Error in getUserId ===')
-		console.error('userId:', userId, 'tenantCode:', tenantCode)
-		console.error('Error:', err.message)
-		if (err.response) {
-			console.error('Response Status:', err.response.status)
-			console.error('Response Data:', err.response.data)
-		}
-		console.error('===========================')
 		throw err
 	}
 }

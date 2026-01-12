@@ -212,15 +212,6 @@ exports.createChatRoom = async (recipientUserId, initiatorUserId, initialMessage
  */
 exports.resolve = async (userId, tenantCode) => {
 	try {
-		// Log incoming parameters
-		console.log('=== communicationHelper.resolve called ===')
-		console.log('userId:', userId, 'type:', typeof userId)
-		console.log('tenantCode:', tenantCode, 'type:', typeof tenantCode)
-		console.log('tenantCode is undefined?', tenantCode === undefined)
-		console.log('tenantCode is null?', tenantCode === null)
-		console.log('tenantCode is empty string?', tenantCode === '')
-		console.log('==========================================')
-
 		const userIdResponse = await communicationRequests.getUserId(userId, tenantCode)
 
 		return {
@@ -230,7 +221,6 @@ exports.resolve = async (userId, tenantCode) => {
 		if (error.message === common.COMMUNICATION.UNAUTHORIZED) {
 			console.error('Error: Unauthorized access during resolve. Please check your tokens.')
 		}
-		console.error('Error in resolve:', { userId, tenantCode, error: error.message })
 		throw error
 	}
 }
