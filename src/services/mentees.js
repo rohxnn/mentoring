@@ -1396,6 +1396,14 @@ module.exports = class MenteesHelper {
 
 			const filter_type = filterType !== '' ? filterType : common.MENTOR_ROLE
 
+			console.log('🔍 FILTERLIST DEBUG - Input tokenInformation:', {
+				id: tokenInformation.id,
+				organization_code: tokenInformation.organization_code,
+				organization_id: tokenInformation.organization_id,
+				tenant_code: tenantCode,
+				filter_type,
+			})
+
 			let organization_codes = []
 			let tenantCodes = []
 			let organizationInfo = []
@@ -1406,7 +1414,10 @@ module.exports = class MenteesHelper {
 				tenantCode
 			)
 
+			console.log('🔍 FILTERLIST DEBUG - Organizations result:', organizations)
+
 			const defaults = await getDefaults()
+			console.log('🔍 FILTERLIST DEBUG - Defaults result:', defaults)
 
 			if (organizations && organizations.result.organizationInfo?.length > 0) {
 				organization_codes = organizations.result.organizationCodes
