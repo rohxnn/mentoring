@@ -582,14 +582,44 @@ module.exports = class MenteesHelper {
 			}
 
 			if (!sessionAttendeeExist) {
+				console.log('  - ❌ sessionAttendeeExist is null - USER_NOT_ENROLLED')
 				return responses.failureResponse({
 					message: 'USER_NOT_ENROLLED',
 					statusCode: httpStatusCode.bad_request,
 					responseCode: 'CLIENT_ERROR',
 				})
 			}
+
+			console.log('  - ✅ sessionAttendeeExist found')
+			console.log('  - sessionAttendeeExist.meeting_info:', sessionAttendeeExist.meeting_info ? 'EXISTS' : 'NULL')
+			if (sessionAttendeeExist.meeting_info) {
+				console.log(
+					'  - sessionAttendeeExist.meeting_info.link:',
+					sessionAttendeeExist.meeting_info.link ? 'EXISTS' : 'NULL'
+				)
+				if (sessionAttendeeExist.meeting_info.link) {
+					console.log(
+						'  - ⚠️ Existing meeting_info.link found:',
+						sessionAttendeeExist.meeting_info.link.replace(/password=[^&]+/, 'password=[HIDDEN]')
+					)
+					// Check if existing link has wrong name
+					const existingLink = sessionAttendeeExist.meeting_info.link
+					const fullNameMatch = existingLink.match(/fullName=([^&]+)/)
+					if (fullNameMatch) {
+						const existingName = decodeURIComponent(fullNameMatch[1])
+						console.log('  - ⚠️ Existing link fullName:', existingName)
+						console.log('  - ⚠️ sessionData.mentor_name:', sessionData.mentor_name)
+						console.log(
+							'  - ⚠️ Name match check - existingName === mentor_name?',
+							existingName === sessionData.mentor_name ? 'YES ⚠️ WRONG NAME IN EXISTING LINK!' : 'NO'
+						)
+					}
+				}
+			}
+
 			let meetingInfo
 			if (sessionData?.meeting_info?.value !== common.BBB_VALUE) {
+				console.log('  - 📌 Non-BBB meeting platform, using session meeting_info')
 				meetingInfo = sessionData.meeting_info
 
 				await sessionAttendeesQueries.updateOne(
@@ -608,9 +638,35 @@ module.exports = class MenteesHelper {
 					result: meetingInfo,
 				})
 			}
+
+			console.log('  - 📌 BBB meeting platform detected')
 			if (sessionAttendeeExist?.meeting_info?.link) {
+				console.log('  - ⚠️ REUSING existing meeting_info.link (this might have wrong name!)')
+				console.log(
+					'  - Existing link (password hidden):',
+					sessionAttendeeExist.meeting_info.link.replace(/password=[^&]+/, 'password=[HIDDEN]')
+				)
+				// Extract and check the name from existing link
+				const existingLink = sessionAttendeeExist.meeting_info.link
+				const fullNameMatch = existingLink.match(/fullName=([^&]+)/)
+				if (fullNameMatch) {
+					const existingName = decodeURIComponent(fullNameMatch[1])
+					console.log('  - ⚠️ Existing link fullName:', existingName)
+					console.log('  - ⚠️ sessionData.mentor_name:', sessionData.mentor_name)
+					console.log('  - ⚠️ mentee.name (from cache):', mentee.name)
+					console.log(
+						'  - ⚠️ Name match check - existingName === mentor_name?',
+						existingName === sessionData.mentor_name ? 'YES ⚠️ WRONG NAME IN EXISTING LINK!' : 'NO'
+					)
+					console.log(
+						'  - ⚠️ Name match check - existingName === mentee.name?',
+						existingName === mentee.name ? 'YES ✅' : 'NO'
+					)
+				}
 				meetingInfo = sessionWithAttendee.meeting_info
+				console.log('  - ⚠️ Returning existing link without regenerating - THIS IS THE PROBLEM!')
 			} else {
+				console.log('  - ✅ No existing link, will create new BBB join link')
 				// Ensure mentee_password exists before joining BBB
 				if (!sessionData.mentee_password) {
 					return responses.failureResponse({
