@@ -640,8 +640,11 @@ module.exports = class MenteesHelper {
 			}
 
 			console.log('  - 📌 BBB meeting platform detected')
+			let shouldRegenerateLink = false
+			let menteeExtension = null
+
 			if (sessionAttendeeExist?.meeting_info?.link) {
-				console.log('  - ⚠️ REUSING existing meeting_info.link (this might have wrong name!)')
+				console.log('  - ⚠️ Existing meeting_info.link found, checking if name is correct...')
 				console.log(
 					'  - Existing link (password hidden):',
 					sessionAttendeeExist.meeting_info.link.replace(/password=[^&]+/, 'password=[HIDDEN]')
@@ -649,24 +652,47 @@ module.exports = class MenteesHelper {
 				// Extract and check the name from existing link
 				const existingLink = sessionAttendeeExist.meeting_info.link
 				const fullNameMatch = existingLink.match(/fullName=([^&]+)/)
+
 				if (fullNameMatch) {
 					const existingName = decodeURIComponent(fullNameMatch[1])
-					console.log('  - ⚠️ Existing link fullName:', existingName)
-					console.log('  - ⚠️ sessionData.mentor_name:', sessionData.mentor_name)
-					console.log('  - ⚠️ mentee.name (from cache):', mentee.name)
-					console.log(
-						'  - ⚠️ Name match check - existingName === mentor_name?',
-						existingName === sessionData.mentor_name ? 'YES ⚠️ WRONG NAME IN EXISTING LINK!' : 'NO'
-					)
-					console.log(
-						'  - ⚠️ Name match check - existingName === mentee.name?',
-						existingName === mentee.name ? 'YES ✅' : 'NO'
-					)
+					console.log('  - Existing link fullName:', existingName)
+					console.log('  - sessionData.mentor_name:', sessionData.mentor_name)
+					console.log('  - mentee.name (from cache):', mentee.name)
+
+					// Check if existing link has mentor's name (WRONG - should regenerate)
+					if (existingName === sessionData.mentor_name) {
+						console.log('  - ❌ EXISTING LINK HAS MENTOR NAME - WILL REGENERATE!')
+						shouldRegenerateLink = true
+					} else {
+						// Also verify against mentee name from DB to be absolutely sure
+						menteeExtension = await menteeQueries.getMenteeExtension(userId, ['name'], false, tenantCode)
+						const correctMenteeName = menteeExtension?.name || mentee.name
+						console.log('  - Correct mentee name (from DB):', correctMenteeName)
+
+						if (existingName !== correctMenteeName) {
+							console.log('  - ❌ EXISTING LINK NAME DOES NOT MATCH MENTEE NAME - WILL REGENERATE!')
+							shouldRegenerateLink = true
+						} else {
+							console.log('  - ✅ Existing link has correct name, will reuse it')
+						}
+					}
+				} else {
+					console.log('  - ⚠️ Could not extract fullName from existing link, will regenerate')
+					shouldRegenerateLink = true
 				}
-				meetingInfo = sessionWithAttendee.meeting_info
-				console.log('  - ⚠️ Returning existing link without regenerating - THIS IS THE PROBLEM!')
+
+				if (!shouldRegenerateLink) {
+					meetingInfo = sessionWithAttendee.meeting_info
+					console.log('  - ✅ Reusing existing link with correct name')
+				} else {
+					console.log('  - 🔄 Regenerating link with correct mentee name...')
+				}
 			} else {
 				console.log('  - ✅ No existing link, will create new BBB join link')
+				shouldRegenerateLink = true
+			}
+
+			if (shouldRegenerateLink) {
 				// Ensure mentee_password exists before joining BBB
 				if (!sessionData.mentee_password) {
 					return responses.failureResponse({
@@ -683,7 +709,10 @@ module.exports = class MenteesHelper {
 				console.log('  - sessionData.mentee_password:', sessionData.mentee_password ? 'PRESENT' : 'MISSING')
 				console.log('  - sessionData.mentor_password:', sessionData.mentor_password ? 'PRESENT' : 'MISSING')
 
-				const menteeExtension = await menteeQueries.getMenteeExtension(userId, ['name'], false, tenantCode)
+				// Only fetch if not already fetched above
+				if (!menteeExtension) {
+					menteeExtension = await menteeQueries.getMenteeExtension(userId, ['name'], false, tenantCode)
+				}
 				console.log('  - menteeExtension from DB:', menteeExtension ? 'FOUND' : 'NOT_FOUND')
 				if (menteeExtension) {
 					console.log('  - menteeExtension.name:', menteeExtension.name)
