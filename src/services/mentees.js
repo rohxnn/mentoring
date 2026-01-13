@@ -578,9 +578,13 @@ module.exports = class MenteesHelper {
 						responseCode: 'CLIENT_ERROR',
 					})
 				}
+				// Always fetch mentee name directly from database to ensure correct name
+				// Cache might have stale/incorrect data (e.g., mentor's name instead of mentee's name)
+				const menteeExtension = await menteeQueries.getMenteeExtension(userId, ['name'], false, tenantCode)
+				const menteeName = menteeExtension?.name || mentee.name
 				const attendeeLink = await bigBlueButtonService.joinMeetingAsAttendee(
 					sessionId,
-					mentee.name,
+					menteeName,
 					sessionData.mentee_password
 				)
 				meetingInfo = {
