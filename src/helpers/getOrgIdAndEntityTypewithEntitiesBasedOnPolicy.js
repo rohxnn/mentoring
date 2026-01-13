@@ -256,8 +256,15 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 				? [organization_codes]
 				: []
 
+			// Remove duplicates and add default if not already present
+			const uniqueOrgCodes = [...new Set(orgCodes)]
+			const finalOrgCodes =
+				defaultOrgCode && !uniqueOrgCodes.includes(defaultOrgCode)
+					? [...uniqueOrgCodes, defaultOrgCode]
+					: uniqueOrgCodes
+
 			filter.organization_code = {
-				[Op.in]: defaultOrgCode ? [...orgCodes, defaultOrgCode] : orgCodes,
+				[Op.in]: finalOrgCodes,
 			}
 
 			let entityTypes = []
@@ -276,8 +283,13 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 			}
 			//fetch entity types and entities
 			// Handle both array and string cases for tenantCodes
-			const tenantCodeArray = Array.isArray(tenantCodes) ? tenantCodes : [tenantCodes]
-			const finalTenantCodes = defaultTenantCode ? [...tenantCodeArray, defaultTenantCode] : tenantCodeArray
+			const tenantCodeArray = Array.isArray(tenantCodes) ? tenantCodes : tenantCodes ? [tenantCodes] : []
+			// Remove duplicates and add default if not already present
+			const uniqueTenantCodes = [...new Set(tenantCodeArray)]
+			const finalTenantCodes =
+				defaultTenantCode && !uniqueTenantCodes.includes(defaultTenantCode)
+					? [...uniqueTenantCodes, defaultTenantCode]
+					: uniqueTenantCodes
 
 			console.log('🔍 ENTITY TYPES DEBUG - Filter and parameters:', {
 				modelName,
@@ -285,7 +297,7 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 				modelNameFirst: Array.isArray(modelName) ? modelName[0] : modelName,
 				entity_types,
 				finalTenantCodes,
-				organizationCodes: filter.organization_code[Op.in],
+				organizationCodes: finalOrgCodes,
 				filter,
 			})
 
@@ -296,10 +308,15 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 				// Can use model cache with additional filtering
 				console.log('🔍 ENTITY TYPES DEBUG - Using CACHE path')
 				try {
+					// getEntityTypesAndEntitiesForModel expects single tenantCode and orgCode (not arrays)
+					// It handles defaults internally, so we pass the first (user) code
+					const userTenantCode = finalTenantCodes[0] || tenantCodeArray[0]
+					const userOrgCode = finalOrgCodes[0] || orgCodes[0]
+
 					entityTypesWithEntities = await entityTypeCache.getEntityTypesAndEntitiesForModel(
 						modelName[0],
-						finalTenantCodes,
-						filter.organization_code[Op.in],
+						userTenantCode,
+						userOrgCode,
 						{
 							allow_filtering: filter.allow_filtering,
 							has_entities: filter.has_entities,
