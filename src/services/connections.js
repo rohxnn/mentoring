@@ -701,6 +701,7 @@ module.exports = class ConnectionHelper {
 			}
 
 			const userInfo = await communicationHelper.resolve(friend_id, tenantCode)
+
 			if (!userInfo) {
 				return responses.failureResponse({
 					responseCode: 'CLIENT_ERROR',
