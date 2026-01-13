@@ -4,7 +4,7 @@ const entityTypeQueries = require('@database/queries/entityType')
 const entityTypeCache = require('@helpers/entityTypeCache')
 const cacheHelper = require('@generics/cacheHelper')
 const organisationExtensionQueries = require('@database/queries/organisationExtension')
-const { Op } = require('sequelize')
+const { Op, Sequelize } = require('sequelize')
 
 module.exports = class OrganizationAndEntityTypePolicyHelper {
 	static async getOrganizationIdBasedOnPolicy(userId, organization_code, filterType, tenantCode) {
@@ -265,7 +265,11 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 				}
 			}
 			if (modelName) {
-				filter.model_names = { [Op.contains]: Array.isArray(modelName) ? modelName : [modelName] }
+				// Use Sequelize.literal to force correct PostgreSQL array type for character varying[] column
+				const modelNameValue = Array.isArray(modelName) ? modelName[0] : modelName
+				filter.model_names = {
+					[Op.contains]: Sequelize.literal(`ARRAY['${modelNameValue}']::character varying[]`),
+				}
 			}
 			//fetch entity types and entities
 			// Handle both array and string cases for tenantCodes
