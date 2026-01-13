@@ -4,7 +4,7 @@ const md5 = require('md5')
 const common = require('@constants/common')
 
 // Import database queries for fallback
-const { Op } = require('sequelize')
+const { Op, Sequelize } = require('sequelize')
 const mentorQueries = require('@database/queries/mentorExtension')
 const userQueries = require('@database/queries/userExtension')
 const organisationExtensionQueries = require('@database/queries/organisationExtension')
@@ -568,7 +568,7 @@ const entityTypes = {
 				const userFilter = {
 					status: 'ACTIVE',
 					organization_code: orgCode,
-					model_names: { [Op.contains]: [modelName] },
+					model_names: { [Op.contains]: Sequelize.literal(`ARRAY['${modelName}']::character varying[]`) },
 					value: entityValue,
 				}
 				const userEntityTypes = await entityTypeQueries.findUserEntityTypesAndEntities(userFilter, [tenantCode])
@@ -593,7 +593,7 @@ const entityTypes = {
 					const defaultFilter = {
 						status: 'ACTIVE',
 						organization_code: defaults.orgCode,
-						model_names: { [Op.contains]: [modelName] },
+						model_names: { [Op.contains]: Sequelize.literal(`ARRAY['${modelName}']::character varying[]`) },
 						value: entityValue,
 					}
 					const defaultEntityTypes = await entityTypeQueries.findUserEntityTypesAndEntities(defaultFilter, [
@@ -686,7 +686,7 @@ const entityTypes = {
 				const userFilter = {
 					status: 'ACTIVE',
 					organization_code: orgCode,
-					model_names: { [Op.contains]: [modelName] },
+					model_names: { [Op.contains]: Sequelize.literal(`ARRAY['${modelName}']::character varying[]`) },
 				}
 				const userEntityTypes = await entityTypeQueries.findUserEntityTypesAndEntities(userFilter, [tenantCode])
 				if (userEntityTypes && userEntityTypes.length > 0) {
@@ -710,7 +710,7 @@ const entityTypes = {
 					const defaultFilter = {
 						status: 'ACTIVE',
 						organization_code: defaults.orgCode,
-						model_names: { [Op.contains]: [modelName] },
+						model_names: { [Op.contains]: Sequelize.literal(`ARRAY['${modelName}']::character varying[]`) },
 					}
 					const defaultEntityTypes = await entityTypeQueries.findUserEntityTypesAndEntities(defaultFilter, [
 						defaults.tenantCode,
