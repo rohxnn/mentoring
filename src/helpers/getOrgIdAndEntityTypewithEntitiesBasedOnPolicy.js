@@ -4,7 +4,7 @@ const entityTypeQueries = require('@database/queries/entityType')
 const entityTypeCache = require('@helpers/entityTypeCache')
 const cacheHelper = require('@generics/cacheHelper')
 const organisationExtensionQueries = require('@database/queries/organisationExtension')
-const { Op } = require('sequelize')
+const { Op, Sequelize } = require('sequelize')
 
 module.exports = class OrganizationAndEntityTypePolicyHelper {
 	static async getOrganizationIdBasedOnPolicy(userId, organization_code, filterType, tenantCode) {
@@ -238,8 +238,15 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 				? [organization_codes]
 				: []
 
+			// Remove duplicates and add default if not already present
+			const uniqueOrgCodes = [...new Set(orgCodes)]
+			const finalOrgCodes =
+				defaultOrgCode && !uniqueOrgCodes.includes(defaultOrgCode)
+					? [...uniqueOrgCodes, defaultOrgCode]
+					: uniqueOrgCodes
+
 			filter.organization_code = {
-				[Op.in]: defaultOrgCode ? [...orgCodes, defaultOrgCode] : orgCodes,
+				[Op.in]: finalOrgCodes,
 			}
 
 			let entityTypes = []
@@ -263,10 +270,15 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 				// This query uses only core fields (model, status, organization_code, allow_filtering, has_entities)
 				// Can use model cache with additional filtering
 				try {
+					// getEntityTypesAndEntitiesForModel expects single tenantCode and orgCode (not arrays)
+					// It handles defaults internally, so we pass the first (user) code
+					const userTenantCode = finalTenantCodes[0] || tenantCodeArray[0]
+					const userOrgCode = finalOrgCodes[0] || orgCodes[0]
+
 					entityTypesWithEntities = await entityTypeCache.getEntityTypesAndEntitiesForModel(
-						modelName,
-						filter.organization_code[Op.in],
-						finalTenantCodes,
+						modelName[0],
+						userTenantCode,
+						userOrgCode,
 						{
 							allow_filtering: filter.allow_filtering,
 							has_entities: filter.has_entities,
