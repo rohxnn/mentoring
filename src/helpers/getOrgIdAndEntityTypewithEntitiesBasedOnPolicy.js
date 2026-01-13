@@ -43,12 +43,9 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 			visibilityPolicies = policyMap[filterType] || []
 			const attributes = visibilityPolicies
 
-			// Handle tenantCode - can be a string or an object with Op.in
-			const tenantCodeFilter = typeof tenantCode === 'object' && tenantCode[Op.in] ? tenantCode : tenantCode
-
 			const orgExtension = await organisationExtensionQueries.findOne(
 				{ organization_code: organization_code },
-				tenantCodeFilter,
+				tenantCode,
 				{
 					attributes: attributes,
 				}
@@ -106,7 +103,7 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 									},
 									associatedAdditionalFilter,
 								],
-								tenant_code: tenantCodeFilter,
+								tenant_code: tenantCode,
 							},
 							{
 								attributes: ['organization_id', 'organization_code', 'tenant_code', 'name'],
@@ -185,7 +182,7 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 										],
 									},
 								],
-								tenant_code: tenantCodeFilter,
+								tenant_code: tenantCode,
 							},
 							{
 								attributes: ['organization_id', 'organization_code', 'tenant_code', 'name'],

@@ -1396,21 +1396,6 @@ module.exports = class MenteesHelper {
 
 			const filter_type = filterType !== '' ? filterType : common.MENTOR_ROLE
 
-			// Get defaults first to use both user and default tenant codes
-			const defaults = await getDefaults()
-			if (!defaults.orgCode)
-				return responses.failureResponse({
-					message: 'DEFAULT_ORG_CODE_NOT_SET',
-					statusCode: httpStatusCode.bad_request,
-					responseCode: 'CLIENT_ERROR',
-				})
-			if (!defaults.tenantCode)
-				return responses.failureResponse({
-					message: 'DEFAULT_TENANT_CODE_NOT_SET',
-					statusCode: httpStatusCode.bad_request,
-					responseCode: 'CLIENT_ERROR',
-				})
-
 			let organization_codes = []
 			let tenantCodes = []
 			let organizationInfo = []
@@ -1418,8 +1403,10 @@ module.exports = class MenteesHelper {
 				tokenInformation.id,
 				tokenInformation.organization_code,
 				filter_type,
-				{ [Op.in]: [tenantCode, defaults.tenantCode] }
+				tenantCode
 			)
+
+			const defaults = await getDefaults()
 
 			if (organizations && organizations.result.organizationInfo?.length > 0) {
 				organization_codes = organizations.result.organizationCodes
