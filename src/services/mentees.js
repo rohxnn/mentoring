@@ -450,7 +450,20 @@ module.exports = class MenteesHelper {
 
 	static async joinSession(sessionId, userId, organizationCode, tenantCode) {
 		try {
+			console.log('🟢 [joinSession] START - API called:')
+			console.log('  - sessionId:', sessionId)
+			console.log('  - userId:', userId)
+			console.log('  - organizationCode:', organizationCode)
+			console.log('  - tenantCode:', tenantCode)
+
 			const mentee = await cacheHelper.mentee.get(tenantCode, userId)
+			console.log('  - mentee from cache:', mentee ? 'FOUND' : 'NOT_FOUND')
+			if (mentee) {
+				console.log('  - mentee.name (from cache):', mentee.name)
+				console.log('  - mentee.user_id:', mentee.user_id)
+				console.log('  - mentee.is_mentor:', mentee.is_mentor)
+			}
+
 			if (!mentee) {
 				return responses.failureResponse({
 					message: 'USER_NOT_FOUND',
@@ -462,7 +475,13 @@ module.exports = class MenteesHelper {
 			// Optimized: Single query with JOIN to get session and attendee data together
 			let sessionWithAttendee
 			let sessionData = await cacheHelper.sessions.get(tenantCode, sessionId)
+			console.log('  - sessionData from cache:', sessionData ? 'FOUND' : 'NOT_FOUND')
 			if (sessionData) {
+				console.log('  - sessionData.status:', sessionData.status)
+				console.log('  - sessionData.mentee_password:', sessionData.mentee_password ? 'PRESENT' : 'MISSING')
+				console.log('  - sessionData.mentor_password:', sessionData.mentor_password ? 'PRESENT' : 'MISSING')
+				console.log('  - sessionData.mentor_name:', sessionData.mentor_name)
+				console.log('  - sessionData.mentor_id:', sessionData.mentor_id)
 				sessionWithAttendee = sessionData.mentees?.find((mentee) => String(mentee.id) === String(userId))
 				if (sessionWithAttendee) {
 					sessionWithAttendee = {
@@ -475,21 +494,43 @@ module.exports = class MenteesHelper {
 				}
 				// If mentee_password is missing from cache, fetch from database
 				if (!sessionData.mentee_password) {
+					console.log('  - ⚠️ mentee_password missing from cache, fetching from DB...')
 					const fullSessionData = await sessionQueries.findOne({ id: sessionId }, tenantCode)
 					if (fullSessionData?.mentee_password) {
 						sessionData.mentee_password = fullSessionData.mentee_password
+						console.log(
+							'  - ✅ mentee_password fetched from DB:',
+							fullSessionData.mentee_password ? 'PRESENT' : 'MISSING'
+						)
+					} else {
+						console.log('  - ❌ mentee_password still missing after DB fetch')
 					}
 				}
 			} else {
+				console.log('  - ⚠️ Cache miss, fetching from database...')
 				sessionWithAttendee = await sessionQueries.findSessionWithAttendee(
 					sessionId,
 					mentee.user_id,
 					tenantCode
 				)
+				console.log('  - sessionWithAttendee from DB:', sessionWithAttendee ? 'FOUND' : 'NOT_FOUND')
 
 				// Get full session data to ensure we have mentee_password
 				if (sessionWithAttendee) {
 					sessionData = await sessionQueries.findOne({ id: sessionId }, tenantCode)
+					console.log('  - sessionData from DB:', sessionData ? 'FOUND' : 'NOT_FOUND')
+					if (sessionData) {
+						console.log(
+							'  - sessionData.mentee_password:',
+							sessionData.mentee_password ? 'PRESENT' : 'MISSING'
+						)
+						console.log(
+							'  - sessionData.mentor_password:',
+							sessionData.mentor_password ? 'PRESENT' : 'MISSING'
+						)
+						console.log('  - sessionData.mentor_name:', sessionData.mentor_name)
+						console.log('  - sessionData.status:', sessionData.status)
+					}
 					if (!sessionData) {
 						return responses.failureResponse({
 							message: 'SESSION_NOT_FOUND',
@@ -580,12 +621,43 @@ module.exports = class MenteesHelper {
 				}
 				// Always fetch mentee name directly from database to ensure correct name
 				// Cache might have stale/incorrect data (e.g., mentor's name instead of mentee's name)
+				console.log('  - 🔍 Fetching mentee name from database...')
+				console.log('  - mentee.name (from cache):', mentee.name)
+				console.log('  - sessionData.mentor_name:', sessionData.mentor_name)
+				console.log('  - sessionData.mentee_password:', sessionData.mentee_password ? 'PRESENT' : 'MISSING')
+				console.log('  - sessionData.mentor_password:', sessionData.mentor_password ? 'PRESENT' : 'MISSING')
+
 				const menteeExtension = await menteeQueries.getMenteeExtension(userId, ['name'], false, tenantCode)
-				const menteeName = menteeExtension?.name || mentee.name
+				console.log('  - menteeExtension from DB:', menteeExtension ? 'FOUND' : 'NOT_FOUND')
+				if (menteeExtension) {
+					console.log('  - menteeExtension.name:', menteeExtension.name)
+				}
+
+				const menteeName = menteeExtension?.name || mentee.name || 'Attendee'
+				console.log('  - ✅ Final menteeName to use:', menteeName)
+				console.log('  - ⚠️ WARNING - Name comparison:')
+				console.log(
+					'    - menteeName === sessionData.mentor_name?',
+					menteeName === sessionData.mentor_name ? 'YES ⚠️ SAME AS MENTOR!' : 'NO ✅'
+				)
+				console.log('    - menteeName === mentee.name?', menteeName === mentee.name ? 'YES' : 'NO')
+
+				console.log('  - 📞 Calling bigBlueButtonService.joinMeetingAsAttendee with:')
+				console.log('    - sessionId:', sessionId)
+				console.log('    - menteeName:', menteeName)
+				console.log('    - password type: mentee_password')
+				console.log('    - password value:', sessionData.mentee_password ? 'PRESENT' : 'MISSING')
+
 				const attendeeLink = await bigBlueButtonService.joinMeetingAsAttendee(
 					sessionId,
 					menteeName,
 					sessionData.mentee_password
+				)
+
+				console.log('  - ✅ Received attendeeLink from BBB service')
+				console.log(
+					'  - attendeeLink (password hidden):',
+					attendeeLink ? attendeeLink.replace(/password=[^&]+/, 'password=[HIDDEN]') : 'NULL'
 				)
 				meetingInfo = {
 					value: common.BBB_VALUE,

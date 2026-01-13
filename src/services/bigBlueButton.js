@@ -47,14 +47,35 @@ module.exports = class BigBlueButtonHelper {
 
 	static async joinMeetingAsAttendee(meetingId, menteeName, menteePW) {
 		try {
+			console.log('🔵 [joinMeetingAsAttendee] START - Parameters received:')
+			console.log('  - meetingId:', meetingId)
+			console.log('  - menteeName (raw):', menteeName)
+			console.log(
+				'  - menteePW (password type):',
+				menteePW ? 'PRESENT' : 'MISSING',
+				menteePW ? `(length: ${menteePW.length})` : ''
+			)
+
 			menteeName = encodeURI(menteeName)
+			console.log('  - menteeName (encoded):', menteeName)
+
 			let query = 'meetingID=' + meetingId + '&password=' + menteePW + '&fullName=' + menteeName
+			console.log('  - query string:', query.replace(menteePW, '[PASSWORD_HIDDEN]'))
+
 			let checkSumGeneration = 'join' + query + process.env.BIG_BLUE_BUTTON_SECRET_KEY
 			const checksum = utils.generateCheckSum(checkSumGeneration)
 
 			const joinUrl = bigBlueButtonUrl + endpoints.JOIN_MEETING + '?' + query + '&checksum=' + checksum
+			console.log(
+				'🔵 [joinMeetingAsAttendee] END - Generated URL (password hidden):',
+				joinUrl.replace(/password=[^&]+/, 'password=[HIDDEN]')
+			)
+			console.log('  - URL contains fullName:', joinUrl.includes('fullName=' + menteeName) ? 'YES' : 'NO')
+			console.log('  - URL contains password:', joinUrl.includes('password=') ? 'YES' : 'NO')
+
 			return joinUrl
 		} catch (error) {
+			console.error('❌ [joinMeetingAsAttendee] ERROR:', error)
 			throw error
 		}
 	}
