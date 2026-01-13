@@ -473,6 +473,13 @@ module.exports = class MenteesHelper {
 						attendee_meeting_info: sessionWithAttendee.meeting_info ?? sessionData.meeting_info,
 					}
 				}
+				// If mentee_password is missing from cache, fetch from database
+				if (!sessionData.mentee_password) {
+					const fullSessionData = await sessionQueries.findOne({ id: sessionId }, tenantCode)
+					if (fullSessionData?.mentee_password) {
+						sessionData.mentee_password = fullSessionData.mentee_password
+					}
+				}
 			} else {
 				sessionWithAttendee = await sessionQueries.findSessionWithAttendee(
 					sessionId,
@@ -480,12 +487,22 @@ module.exports = class MenteesHelper {
 					tenantCode
 				)
 
-				sessionData = { ...sessionWithAttendee }
-				// Normalize DB result to match cache structure
+				// Get full session data to ensure we have mentee_password
 				if (sessionWithAttendee) {
+					sessionData = await sessionQueries.findOne({ id: sessionId }, tenantCode)
+					if (!sessionData) {
+						return responses.failureResponse({
+							message: 'SESSION_NOT_FOUND',
+							statusCode: httpStatusCode.bad_request,
+							responseCode: 'CLIENT_ERROR',
+						})
+					}
+					// Normalize DB result to match cache structure
 					sessionWithAttendee.attendee_id = sessionWithAttendee.id
 					sessionWithAttendee.enrolled_type = sessionWithAttendee.enrolled_type || sessionWithAttendee.type
 					sessionWithAttendee.attendee_meeting_info = sessionWithAttendee.meeting_info
+				} else {
+					sessionData = null
 				}
 			}
 
@@ -553,6 +570,14 @@ module.exports = class MenteesHelper {
 			if (sessionAttendeeExist?.meeting_info?.link) {
 				meetingInfo = sessionWithAttendee.meeting_info
 			} else {
+				// Ensure mentee_password exists before joining BBB
+				if (!sessionData.mentee_password) {
+					return responses.failureResponse({
+						message: 'MENTEE_PASSWORD_NOT_FOUND',
+						statusCode: httpStatusCode.bad_request,
+						responseCode: 'CLIENT_ERROR',
+					})
+				}
 				const attendeeLink = await bigBlueButtonService.joinMeetingAsAttendee(
 					sessionId,
 					mentee.name,
