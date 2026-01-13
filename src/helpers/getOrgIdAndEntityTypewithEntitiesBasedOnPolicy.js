@@ -265,7 +265,7 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 				}
 			}
 			if (modelName) {
-				filter.model_names = { [Op.contains]: modelName }
+				filter.model_names = { [Op.contains]: Array.isArray(modelName) ? modelName : [modelName] }
 			}
 			//fetch entity types and entities
 			// Handle both array and string cases for tenantCodes
@@ -274,6 +274,8 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 
 			console.log('🔍 ENTITY TYPES DEBUG - Filter and parameters:', {
 				modelName,
+				modelNameIsArray: Array.isArray(modelName),
+				modelNameFirst: Array.isArray(modelName) ? modelName[0] : modelName,
 				entity_types,
 				finalTenantCodes,
 				organizationCodes: filter.organization_code[Op.in],
@@ -282,13 +284,13 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 
 			// Use cache for model-based queries since this query has core fields only
 			let entityTypesWithEntities
-			if (modelName && !entity_types) {
+			if (modelName && Array.isArray(modelName) && modelName.length > 0 && !entity_types) {
 				// This query uses only core fields (model, status, organization_code, allow_filtering, has_entities)
 				// Can use model cache with additional filtering
 				console.log('🔍 ENTITY TYPES DEBUG - Using CACHE path')
 				try {
 					entityTypesWithEntities = await entityTypeCache.getEntityTypesAndEntitiesForModel(
-						modelName,
+						modelName[0],
 						finalTenantCodes,
 						filter.organization_code[Op.in],
 						{
