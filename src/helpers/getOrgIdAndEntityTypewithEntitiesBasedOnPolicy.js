@@ -9,13 +9,6 @@ const { Op, Sequelize } = require('sequelize')
 module.exports = class OrganizationAndEntityTypePolicyHelper {
 	static async getOrganizationIdBasedOnPolicy(userId, organization_code, filterType, tenantCode) {
 		try {
-			console.log('🔍 ORG POLICY DEBUG - Input params:', {
-				userId,
-				organization_code,
-				filterType,
-				tenantCode,
-			})
-
 			let organizationInfo = []
 			let organizationCodes = []
 			let tenantCodes = []
@@ -60,8 +53,6 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 					attributes: attributes,
 				}
 			)
-
-			console.log('🔍 ORG POLICY DEBUG - OrgExtension found:', orgExtension)
 
 			if (orgExtension?.organization_code) {
 				const orgPolicyMap = {
@@ -218,12 +209,6 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 				}
 			}
 
-			console.log('🔍 ORG POLICY DEBUG - Final result:', {
-				organizationCodes,
-				tenantCodes,
-				organizationInfoCount: organizationInfo?.length,
-			})
-
 			return {
 				success: true,
 				result: { organizationCodes: organizationCodes, tenantCodes: tenantCodes, organizationInfo },
@@ -291,22 +276,11 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 					? [...uniqueTenantCodes, defaultTenantCode]
 					: uniqueTenantCodes
 
-			console.log('🔍 ENTITY TYPES DEBUG - Filter and parameters:', {
-				modelName,
-				modelNameIsArray: Array.isArray(modelName),
-				modelNameFirst: Array.isArray(modelName) ? modelName[0] : modelName,
-				entity_types,
-				finalTenantCodes,
-				organizationCodes: finalOrgCodes,
-				filter,
-			})
-
 			// Use cache for model-based queries since this query has core fields only
 			let entityTypesWithEntities
 			if (modelName && Array.isArray(modelName) && modelName.length > 0 && !entity_types) {
 				// This query uses only core fields (model, status, organization_code, allow_filtering, has_entities)
 				// Can use model cache with additional filtering
-				console.log('🔍 ENTITY TYPES DEBUG - Using CACHE path')
 				try {
 					// getEntityTypesAndEntitiesForModel expects single tenantCode and orgCode (not arrays)
 					// It handles defaults internally, so we pass the first (user) code
@@ -322,24 +296,19 @@ module.exports = class OrganizationAndEntityTypePolicyHelper {
 							has_entities: filter.has_entities,
 						}
 					)
-					console.log('🔍 ENTITY TYPES DEBUG - Cache result:', entityTypesWithEntities?.length || 'null')
 				} catch (cacheError) {
 					// Fallback to direct database query
-					console.log('🔍 ENTITY TYPES DEBUG - Cache failed, using FALLBACK path:', cacheError?.message)
 					entityTypesWithEntities = await entityTypeQueries.findUserEntityTypesAndEntities(
 						filter,
 						finalTenantCodes
 					)
-					console.log('🔍 ENTITY TYPES DEBUG - Fallback result:', entityTypesWithEntities?.length || 'null')
 				}
 			} else {
 				// Query has specific entity values or other non-core filters - use direct query
-				console.log('🔍 ENTITY TYPES DEBUG - Using DIRECT DB path (specific filters)')
 				entityTypesWithEntities = await entityTypeQueries.findUserEntityTypesAndEntities(
 					filter,
 					finalTenantCodes
 				)
-				console.log('🔍 ENTITY TYPES DEBUG - Direct DB result:', entityTypesWithEntities?.length || 'null')
 			}
 			return {
 				success: true,
