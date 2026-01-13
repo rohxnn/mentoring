@@ -1,7 +1,7 @@
 // Dependencies
 const httpStatusCode = require('@generics/http-status')
 const entityTypeQueries = require('../database/queries/entityType')
-const { Op } = require('sequelize')
+const { Op, Sequelize } = require('sequelize')
 const { getDefaults } = require('@helpers/getDefaultOrgId')
 const responses = require('@helpers/responses')
 const cacheHelper = require('@generics/cacheHelper')
@@ -278,7 +278,7 @@ async function getEntityTypesAndEntitiesForModel(modelName, tenantCode, orgCode,
 			const userFilter = {
 				status: 'ACTIVE',
 				organization_code: orgCode,
-				model_names: { [Op.contains]: [modelName] },
+				model_names: { [Op.contains]: Sequelize.literal(`ARRAY['${modelName}']::character varying[]`) },
 			}
 			const userEntityTypes = await entityTypeQueries.findUserEntityTypesAndEntities(userFilter, [tenantCode])
 			if (userEntityTypes && userEntityTypes.length > 0) {
@@ -294,7 +294,7 @@ async function getEntityTypesAndEntitiesForModel(modelName, tenantCode, orgCode,
 				const defaultFilter = {
 					status: 'ACTIVE',
 					organization_code: defaults.orgCode,
-					model_names: { [Op.contains]: [modelName] },
+					model_names: { [Op.contains]: Sequelize.literal(`ARRAY['${modelName}']::character varying[]`) },
 				}
 				const defaultEntityTypes = await entityTypeQueries.findUserEntityTypesAndEntities(defaultFilter, [
 					defaults.tenantCode,
@@ -410,7 +410,7 @@ async function getEntityTypeByValue(modelName, entityValue, tenantCode, orgCode)
 			status: 'ACTIVE',
 			value: entityValue,
 			organization_code: orgCode,
-			model_names: { [Op.contains]: [modelName] },
+			model_names: { [Op.contains]: Sequelize.literal(`ARRAY['${modelName}']::character varying[]`) },
 		}
 		let entityTypes = await entityTypeQueries.findUserEntityTypesAndEntities(userFilter, [tenantCode])
 		found = entityTypes.length > 0 ? entityTypes[0] : null
@@ -427,7 +427,7 @@ async function getEntityTypeByValue(modelName, entityValue, tenantCode, orgCode)
 				status: 'ACTIVE',
 				value: entityValue,
 				organization_code: defaults.orgCode,
-				model_names: { [Op.contains]: [modelName] },
+				model_names: { [Op.contains]: Sequelize.literal(`ARRAY['${modelName}']::character varying[]`) },
 			}
 			entityTypes = await entityTypeQueries.findUserEntityTypesAndEntities(defaultFilter, [defaults.tenantCode])
 			found = entityTypes.length > 0 ? entityTypes[0] : null
