@@ -1,0 +1,35 @@
+{
+	"info": {
+		"_postman_id": "3587a4bd-a10a-4155-ab8a-2b5fdf13ae0a",
+		"name": "MentorED-Notification",
+		"schema": "https://schema.getpostman.com/json/collection/v2.0.0/collection.json",
+		"_exporter_id": "24204448",
+		"_collection_link": "https://dark-astronaut-764227.postman.co/workspace/Elevate-Workspace~39b977d8-9e5b-4232-87f3-3da4bed3a67c/collection/24204448-3587a4bd-a10a-4155-ab8a-2b5fdf13ae0a?action=share&source=collection_link&creator=24204448"
+	},
+	"item": [
+		{
+			"name": "SendEmail",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "internal_access_token",
+						"value": "{{internal_access_token}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"type\": \"email\",\n    \"email\": {\n        \"to\": \"nevil@tunerlabs.com\",\n        \"subject\": \"Testing email logs\",\n        \"body\": \"Sample Data\",\n        \"attachments\": [\n            {\n                \"url\": \"https://www.clickdimensions.com/links/TestPDFfile.pdf\",\n                \"filename\": \"some-pdf.pdf\",\n                \"type\": \"application/pdf\",\n                \"disposition\": \"attachment\",\n                \"content_id\": \"mytext\"\n            },\n            {\n                \"url\": \"https://sample-videos.com/csv/Sample-Spreadsheet-10-rows.csv\",\n                \"filename\": \"some-csv.csv\",\n                \"type\": \"application/csv\",\n                \"disposition\": \"attachment\",\n                \"content_id\": \"mytext\"\n            }\n        ]\n    }\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": "{{notificationBaseUrl}}notification/v1/email/send"
+			},
+			"response": []
+		}
+	]
+}

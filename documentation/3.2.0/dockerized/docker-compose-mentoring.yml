@@ -1,0 +1,239 @@
+version: "3"
+services:
+  zookeeper:
+    image: "confluentinc/cp-zookeeper:7.3.0"
+    ports:
+      - "2181:2181"
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+      - ZOOKEEPER_CLIENT_PORT=2181
+      - ZOOKEEPER_TICK_TIME=2000
+    networks:
+      - mentored_net
+    logging:
+      driver: none
+  kafka:
+    image: "confluentinc/cp-kafka:7.3.0"
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://kafka:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    depends_on:
+      - zookeeper
+    networks:
+      - mentored_net
+    logging:
+      driver: none
+    healthcheck:
+      test: kafka-topics --bootstrap-server localhost:9092 --list || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 5
+  redis:
+    image: "redis:7.0.0"
+    restart: "always"
+    #ports:
+    #  - '6379:6379'
+    expose:
+      - 6379
+    networks:
+      - mentored_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: none
+  mentoring:
+    image: shikshalokamqa/elevate-mentoring:3.1.3
+    ports:
+      - "3000:3000"
+    command: >
+      bash -c "echo 'Waiting for PostgreSQL on citus_master:5432 to accept connections...' &&
+      while ! timeout 1 bash -c 'cat < /dev/null > /dev/tcp/citus_master/5432' 2> /dev/null; do
+        echo 'Waiting for citus_master to be ready...';
+        sleep 60;
+      done;
+      echo 'Database is ready.';
+      (while ! curl -sSf http://user:3001 > /dev/null; do
+        sleep 1;
+      done && echo 'User Service is up');
+      npm run db:init && npm run db:seed:all &&
+      /bin/bash -c 'cd scripts && echo Running script && node psqlFunction.js' && 
+      (echo 'Running nodeee' && node app.js &) &&
+      (while ! curl -sSf http://mentoring:3000 > /dev/null; do
+        sleep 1;
+      done && echo 'Service is up' &&
+      /bin/bash -c 'cd scripts && echo Running script && node viewsScript.js && node -r module-alias/register sessionUploadScript.js');
+      tail -f /dev/null"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      citus:
+        condition: service_healthy
+      user:
+        condition: service_started
+
+    environment:
+      - KAFKA_URL=kafka:9092
+      - USER_SERIVCE_HOST=http://interface:3569
+      - REDIS_HOST=redis://redis:6379
+      - DEV_DATABASE_URL=postgres://postgres:postgres@citus_master:5432/mentoring
+      - SCHEDULER_SERVICE_HOST=http://scheduler:4000
+    networks:
+      - mentored_net
+    env_file:
+      - ${mentoring_env}
+
+  user:
+    image: shikshalokamqa/elevate-user:3.1.5
+    container_name: "user"
+    ports:
+      - "3001:3001"
+    command: >
+      bash -c "echo 'Waiting for PostgreSQL on citus_master:5432 to accept connections...' &&
+      while ! timeout 1 bash -c 'cat < /dev/null > /dev/tcp/citus_master/5432' 2> /dev/null; do
+        echo 'Waiting for citus_master to be ready...';
+        sleep 1;
+      done;
+      echo 'Database is ready.';
+      npm run db:init && npm run db:seed:all &&
+      (echo 'Running nodeee' && nodemon app.js &) &&
+      (while ! curl -sSf http://user:3001 > /dev/null; do
+        sleep 1;
+      done && echo 'Service is up' &&
+      /bin/bash -c 'cd scripts && echo Running user service scripts && node insertDefaultOrg.js && node viewsScript.js && node -r module-alias/register uploadSampleCSV.js');
+      tail -f /dev/null"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      citus:
+        condition: service_healthy
+      scheduler:
+        condition: service_started
+    environment:
+      - DEV_DATABASE_URL=postgres://postgres:postgres@citus_master:5432/user
+      - KAFKA_URL=kafka:9092
+      - REDIS_HOST=redis://redis:6379
+      - SCHEDULER_SERVICE_HOST=http://scheduler:4000
+
+    networks:
+      - mentored_net
+    env_file:
+      - ${users_env}
+
+  notification:
+    image: shikshalokamqa/elevate-notification:3.1.1
+    ports:
+      - "3002:3002"
+    command: >
+      bash -c "echo 'Waiting for PostgreSQL on citus_master:5432 to accept connections...' &&
+      while ! timeout 1 bash -c 'cat < /dev/null > /dev/tcp/citus_master/5432' 2> /dev/null; do
+        echo 'Waiting for citus_master to be ready...';
+        sleep 1;
+      done;
+      echo 'Database is ready.';
+      npm run db:init && node app.js"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      citus:
+        condition: service_healthy
+    environment:
+      - KAFKA_HOST=kafka:9092
+      - DEV_DATABASE_URL=postgres://postgres:postgres@citus_master:5432/notification
+    networks:
+      - mentored_net
+    env_file:
+      - ${notification_env}
+
+  scheduler:
+    # Update with latest image
+    image: shikshalokamqa/elevate-scheduler:3.1
+    ports:
+      - "4000:4000"
+    command: ["node", "app.js"]
+    environment:
+      - KAFKA_URL=kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - mentored_net
+    env_file:
+      - ${scheduler_env}
+  interface:
+    # Update with latest image
+    image: shikshalokamqa/elevate-interface:3.1.6
+    ports:
+      - "3569:3569"
+    command: ["node", "app.js"]
+    networks:
+      - mentored_net
+    env_file:
+      - ${interface_env}
+  citus:
+    image: citusdata/citus:11.2.0
+    container_name: "citus_master"
+    #ports:
+    #  - 5432:5432
+    expose:
+      - 5432
+    environment: &AUTH
+      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
+      PGUSER: "${POSTGRES_USER:-postgres}"
+      PGPASSWORD: "${POSTGRES_PASSWORD:-postgres}"
+      POSTGRES_DB: "postgres"
+      POSTGRES_HOST_AUTH_METHOD: "${POSTGRES_HOST_AUTH_METHOD:-trust}"
+      POSTGRES_LOG_STATEMENT: "all" # Enable query logging (set to 'all' for all queries)
+    networks:
+      - mentored_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    #volumes:
+    #  - citus-data:/var/lib/postgresql/data
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: elevate-pgadmin
+    restart: always
+    ports:
+      - "5500:80"
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=user@shikshalokam.org
+      - PGADMIN_DEFAULT_PASSWORD=password
+    networks:
+      - mentored_net
+    logging:
+      driver: none
+  portal:
+    # Update with latest image
+    image: shikshalokamqa/mentoring-mobile-app:3.1
+    container_name: portal
+    ports:
+      - "8100:7601"
+    volumes:
+      - ./env.js:/usr/src/app/www/assets/env/env.js
+    networks:
+      - mentored_net
+
+networks:
+  mentored_net:
+    external: false
+#volumes:
+#  citus-data:
