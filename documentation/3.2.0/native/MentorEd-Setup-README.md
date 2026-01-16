@@ -449,10 +449,22 @@ Before setting up the application, the dependencies should be installed and veri
         node -r module-alias/register uploadSampleCSV.js & cd ../../.. && ^
         cd mentoring/src/scripts & node psqlFunction.js & node viewsScript.js & node -r module-alias/register sessionUploadScript.js & cd ../../..
         ```
-
 11. **Start The Portal**
 
-    The portal utilizes Ionic and Angular CLI for building the browser bundle, follow the steps given below to install them and start the portal.
+    The portal uses Ionic and the Angular CLI to build the browser bundle. Please follow the steps below to install them and start the portal, and make sure to install the specified versions.
+
+    Dependencies
+    ------------
+
+    | Requirement         | Description    |
+    |--------------|-----------|
+    | Ionic CLI|Version 7.2.1 (/usr/local/lib/node_modules/@ionic/cli)|
+    | Ionic Framework | <ul><li>@ionic/angular 7.8.6</li> <li>@angular-devkit/build-angular : 17.3.9 </li><li> @angular-devkit/schematics : 17.5.3 </li><li>@angular/cli : 17.3.9 </li><li> @ionic/angular-toolkit : 6.0.0 </li></ul>|
+    | Capacitor | <ul><li>Capacitor CLI : 6.0.0 </li><li>@capacitor/android : 6.0.0 </li><li>@capacitor/core : 6.0.0 </li><li>@capacitor/ios : 6.0.0 </li></ul>|
+    | Cordova | <ul><li>Cordova CLI : 11.0.0</li><li>Cordova Platforms : none</li><li>Cordova Plugins : no whitelisted plugins (0 plugins total)</li></ul>|
+    | Utility | <ul><li>cordova-res : 0.15.4</li><li>native-run : 1.7.4 </li></ul>
+    | System | <ul><li>Android SDK Tools : 26.1.1</li><li><a href="https://nodejs.org/">Node.js®</a>: v18.18.2</li><li>npm: 10.2.0</li><li>OS : Linux 5.13</li></ul>|
+
 
     - **Ubuntu/Linux**
 
